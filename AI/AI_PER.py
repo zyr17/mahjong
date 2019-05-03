@@ -155,19 +155,17 @@ for n in range(n_games):
 
                 if len(episode_dones[i]) >= 1:  # if not 1st turn end
                     episode_dones[i][-1] = 1
-
                     #### Disable the following line if not care others
-                    #                 episode_rewards[i][-1] = final_score_change[i]
+                    episode_rewards[i][-1] = final_score_change[i]
                     ##################################################
 
-            if not np.max(final_score_change) == 0:  ## score change
-                for i in range(4):
-                    agents[i].remember_episode(episode_states[i], episode_rewards[i], episode_dones[i],
-                                               weight=np.max(final_score_change))
+            if not np.max(final_score_change) == 0: ## score change
+                iw = np.argmax(final_score_change)  # winner
+                agents[iw].remember_episode(episode_states[iw], episode_rewards[iw], episode_dones[iw], weight=np.max(final_score_change))
                 print(' ')
                 print(env.t.get_result().result_type)
             else:
-                if np.random.rand() < 0.1:  ## no score change
+                if np.random.rand() < 0.025: ## no score change
                     for i in range(4):
                         agents[i].remember_episode(episode_states[i], episode_rewards[i], episode_dones[i], weight=0)
                     print(' ')
@@ -175,7 +173,7 @@ for n in range(n_games):
 
             for n_train in range(5):
                 for i in range(4):
-                    agents[i].learn(env.symmetric_hand, episode_start=128, care_others=False)
+                    agents[i].learn(env.symmetric_hand, episode_start=128, care_others=True)
 
 data = {"rons": env.rons}
 sio.savemat("./PERrons" + datetime_str + ".mat", data)
