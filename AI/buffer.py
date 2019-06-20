@@ -188,7 +188,8 @@ class MahjongBufferFrost2():
                     'r': self.r,
                     'mu': self.mu,
                     'length': self.length,
-                    'd': self.d}
+                    'd': self.d,
+                    'a':self.a}
 
             f = open(path, 'wb')
             pickle.dump(data, f)
@@ -218,6 +219,7 @@ class MahjongBufferFrost2():
         self.r = data['r']
         self.d = data['d']
         self.mu = data['mu']
+        self.a = data['a']
 
         self.saved = True # avoid multiple saving
 
