@@ -185,6 +185,7 @@ class AgentFrost2():
 
         # statistics
         self.stat = {}
+        self.stat['greedy'] = self.greedy
         self.stat['num_games'] = 0.
         self.stat['hora_games'] = 0.
         self.stat['ron_games'] = 0.
@@ -198,6 +199,7 @@ class AgentFrost2():
         self.stat['fulu_rate'] = 0.
         self.stat['riichi_rate'] = 0.
         self.stat['avg_point_get'] = 0.
+        self.stat['hora_step'] = 0
 
         self.stat['hora'] = []
         self.stat['ron'] = []
@@ -205,7 +207,8 @@ class AgentFrost2():
         self.stat['fire'] = []
         self.stat['score_change'] = []
 
-    def statistics(self, playerNo, result, final_score_change, turn, riichi, menchin):
+
+    def statistics(self, playerNo, result, final_score_change, step, riichi, menchin):
 
         fulu = 1 - menchin
 
@@ -219,15 +222,19 @@ class AgentFrost2():
                 self.stat['tsumo'].append(0)
                 self.stat['hora'].append(1)
                 self.stat['fire'].append(0)
-            elif riichi * 1000 + final_score_change[playerNo] < 0 and final_score_change[playerNo] <= - (
-                    np.max(final_score_change) - riichi * 1000):
+            elif riichi * 1000 + final_score_change[playerNo] < 0:
                 self.stat['ron'].append(0)
                 self.stat['tsumo'].append(0)
                 self.stat['hora'].append(0)
                 self.stat['fire'].append(1)
                 self.stat['fire_games'] += 1
+            else:
+                self.stat['ron'].append(0)
+                self.stat['tsumo'].append(0)
+                self.stat['hora'].append(0)
+                self.stat['fire'].append(0)
 
-        if result.result_type == mp.ResultType.TsumoAgari:
+        elif result.result_type == mp.ResultType.TsumoAgari:
             tsumo_playerNo = np.argmax(final_score_change)
             if playerNo == tsumo_playerNo:
                 self.stat['hora_games'] += 1
@@ -237,6 +244,17 @@ class AgentFrost2():
                 self.stat['tsumo'].append(1)
                 self.stat['hora'].append(1)
                 self.stat['fire'].append(0)
+            else:
+                self.stat['ron'].append(0)
+                self.stat['tsumo'].append(0)
+                self.stat['hora'].append(0)
+                self.stat['fire'].append(0)
+
+        else: # RyuuKyoku
+            self.stat['ron'].append(0)
+            self.stat['tsumo'].append(0)
+            self.stat['hora'].append(0)
+            self.stat['fire'].append(0)
 
         self.stat['score_change'].append(final_score_change[playerNo])
         self.stat['num_games'] += 1
@@ -248,7 +266,7 @@ class AgentFrost2():
         self.stat['fulu_rate'] = (self.stat['fulu_rate'] * (self.stat['hora_games'] - 1) + riichi) / self.stat['hora_games'] if self.stat['hora_games'] > 0 else 0
         self.stat['riichi_rate'] = (self.stat['riichi_rate'] * (self.stat['hora_games'] - 1) + fulu) / self.stat['hora_games'] if self.stat['hora_games'] > 0 else 0
 
-        self.stat['hora_turn'] = (self.stat['hora_turn'] * (self.stat['hora_games'] - 1) + turn) / self.stat['hora_games'] if self.stat['hora_games'] > 0 else 0
+        self.stat['hora_step'] = (self.stat['hora_step'] * (self.stat['hora_games'] - 1) + step) / self.stat['hora_games'] if self.stat['hora_games'] > 0 else 0
         self.stat['avg_point_get'] = self.stat['total_scores_get'] / self.stat['hora_games'] if self.stat['hora_games'] > 0 else 0
 
 
@@ -271,9 +289,17 @@ class AgentFrost2():
         next_value_pred = np.reshape(self.nn.output((aval_next_matrix_features, aval_next_vector_features)), [-1])
 
         # softmax policy
-        policy = scisp.softmax(self.greedy * next_value_pred)
+        # policy = scisp.softmax(self.greedy * next_value_pred)
+        #
+        # policy /= policy.sum()
+        # action = np.random.choice(np.size(policy), p=policy)
 
-        policy /= policy.sum()
+        policy = np.zeros_like(next_value_pred, dtype=np.float32)
+
+        ind = np.argmax(next_value_pred)
+        policy[ind] = 1
+        policy = policy + self.greedy
+        policy = policy / np.sum(policy)
 
         action = np.random.choice(np.size(policy), p=policy)
 
@@ -327,7 +353,15 @@ class AgentFrost2():
                 q[t, n_t[t]:] = - np.inf  # for computing policy
                 q_tar[t, n_t[t]:] = 0
 
-            pi = scisp.softmax(q, axis=1)  # to get the true pi
+            # pi = scisp.softmax(q, axis=1)  # to get the true pi
+
+            pi = np.zeros_like(q, dtype=np.float32)
+
+            for tau in range(pi.shape[0]):
+                ind = np.argmax(q[tau, :n_t[tau]])
+                pi[tau, ind] = 1
+                pi[tau, :n_t[tau]] += self.greedy
+                pi[tau] = pi[tau] / np.sum(pi[tau])
 
             pi_t, pi_tp1 = pi, np.concatenate((pi[1:, :], np.zeros([1, mu_size])), axis=0)
             q_t, q_tp1 = q_tar, np.concatenate((q_tar[1:, :], np.zeros([1, mu_size])), axis=0)
