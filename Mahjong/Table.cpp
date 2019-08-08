@@ -1890,13 +1890,13 @@ void Table::game_init_with_metadata(std::unordered_map<std::string, std::string>
 		if (!val.compare("0")) {
 			庄家 = 0;
 		}
-		if (!val.compare("1")) {
+		else if (!val.compare("1")) {
 			庄家 = 1;
 		}
-		if (!val.compare("2")) {
+		else if (!val.compare("2")) {
 			庄家 = 2;
 		}
-		if (!val.compare("3")) {
+		else if (!val.compare("3")) {
 			庄家 = 3;
 		}
 		else throw STD_RUNTIME_ERROR_WITH_FILE_LINE_FUNCTION("Cannot Read Option: oya");
@@ -1910,13 +1910,13 @@ void Table::game_init_with_metadata(std::unordered_map<std::string, std::string>
 		if (!val.compare("east")) {
 			场风 = Wind::East;
 		}
-		if (!val.compare("west")) {
+		else if (!val.compare("west")) {
 			场风 = Wind::West;
 		}
-		if (!val.compare("south")) {
+		else if (!val.compare("south")) {
 			场风 = Wind::South;
 		}
-		if (!val.compare("north")) {
+		else if (!val.compare("north")) {
 			场风 = Wind::North;
 		}
 		else throw STD_RUNTIME_ERROR_WITH_FILE_LINE_FUNCTION("Cannot Read Option: wind");
@@ -1961,7 +1961,7 @@ void Table::game_init_with_metadata(std::unordered_map<std::string, std::string>
 
 #pragma warning(disable:4244)
 
-std::array<float, 29> Table::generate_state_vector_features_frost2(
+vector_feature_t Table::generate_state_vector_features_frost2(
 	int turn,
 	int yama_len, 
 	bool first_round, 
@@ -1976,7 +1976,7 @@ std::array<float, 29> Table::generate_state_vector_features_frost2(
 	bool agari // The player is agari.
 )
 {
-	std::array<float, 29> vf;
+	vector_feature_t vf;
 
 	for (int i = player_no; i < 4 + player_no; ++i) {
 		vf[i + 0 - player_no] = riichi[(i % 4)] ? 1 : 0;
@@ -2002,12 +2002,13 @@ std::array<float, 29> Table::generate_state_vector_features_frost2(
 	vf[26] = dora_spec - 1;
 	vf[27] = first_round ? 1 : 0;
 	vf[28] = agari ? 1 : 0;
+	vf[29] = turn == player_no ? 1 : 0;
 
 	return vf;
 }
 
-static std::array<float, 34 * 58> to_1d(float mf[34][58]) {
-	std::array<float, 34 * 58> ret;
+static matrix_feature_t to_1d(float mf[34][58]) {
+	matrix_feature_t ret;
 	for (int i = 0; i < 34; ++i) {
 		for (int j = 0; j < 58; ++j)
 		{
@@ -2017,7 +2018,7 @@ static std::array<float, 34 * 58> to_1d(float mf[34][58]) {
 	return ret;
 }
 
-std::array<float, 34 * 58> Table::generate_state_matrix_features_frost2(
+matrix_feature_t Table::generate_state_matrix_features_frost2(
 	std::vector<Tile*> hand,
 	std::vector<BaseTile> dora,
 	int player_no,
@@ -2034,7 +2035,7 @@ std::array<float, 34 * 58> Table::generate_state_matrix_features_frost2(
 	float mf[34][58] = { 0 };
 	int tile_num[34] = { 0 };
 	//auto& hand = players[playerNo].hand;
-	auto& doras = get_dora();
+	auto doras = get_dora();
 
 	constexpr int river_start = 5;
 	constexpr int fulu_start = river_start + 6 * 4;
@@ -2122,7 +2123,7 @@ std::array<float, 34 * 58> Table::generate_state_matrix_features_frost2(
 	return to_1d(mf);
 }
 
-std::vector<std::array<float, 29>> Table::get_next_aval_states_vector_features_frost2(int playerNo)
+std::vector<vector_feature_t> Table::get_next_aval_states_vector_features_frost2(int playerNo)
 {
 	// who make selection?
 	if (who_make_selection() != playerNo)
@@ -2135,12 +2136,12 @@ std::vector<std::array<float, 29>> Table::get_next_aval_states_vector_features_f
 }
 #pragma warning(disable:4267)
 #pragma warning(disable:4838)
-std::vector<std::array<float, 29>> Table::_get_self_action_vector_features_frost2(int playerNo)
+std::vector<vector_feature_t> Table::_get_self_action_vector_features_frost2(int playerNo)
 {
 	/*
 	Here we should obtain arguments for this generator function:
 
-	std::array<float, 29> Table::generate_state_vector_features_frost2(
+	vector_feature_t Table::generate_state_vector_features_frost2(
 		int turn,
 		int yama_len,
 		bool first_round,
@@ -2155,7 +2156,7 @@ std::vector<std::array<float, 29>> Table::_get_self_action_vector_features_frost
 		bool agari // The player is agari.
 	)
 	*/
-	std::vector<std::array<float, 29>> next_states;
+	std::vector<vector_feature_t> next_states;
 	vector<SelfAction> actions = get_self_actions();
 	for (SelfAction action : actions) {
 		int turn = this->turn;
@@ -2167,7 +2168,7 @@ std::vector<std::array<float, 29>> Table::_get_self_action_vector_features_frost
 		std::array<bool, 4> riichi = { players[0].riichi, players[1].riichi, players[2].riichi, players[3].riichi };
 		std::array<bool, 4> double_riichi = { players[0].double_riichi, players[1].double_riichi, players[2].double_riichi, players[3].double_riichi };
 		std::array<bool, 4> ippatsu = { players[0].一发, players[1].一发, players[2].一发, players[3].一发 };
-		std::array<int, 4> hand = { players[0].hand.size(), players[1].hand.size(), players[2].hand.size(), players[3].hand.size() };
+		std::array<int, 4> hand = { (int)players[0].hand.size(), (int)players[1].hand.size(), (int)players[2].hand.size(), (int)players[3].hand.size() };
 		std::array<bool, 4> mentsun = { players[0].门清, players[1].门清, players[2].门清, players[3].门清 };
 		bool agari = false;
 		
@@ -2212,12 +2213,12 @@ std::vector<std::array<float, 29>> Table::_get_self_action_vector_features_frost
 	return next_states;
 }
 
-std::vector<std::array<float, 29>> Table::_get_response_action_vector_features_frost2(int call_player, int response_player)
+std::vector<vector_feature_t> Table::_get_response_action_vector_features_frost2(int call_player, int response_player)
 {
 	/*
 	Here we should obtain arguments for this generator function:
 
-	std::array<float, 29> Table::generate_state_vector_features_frost2(
+	vector_feature_t Table::generate_state_vector_features_frost2(
 		int turn,
 		int yama_len,
 		bool first_round,
@@ -2232,7 +2233,7 @@ std::vector<std::array<float, 29>> Table::_get_response_action_vector_features_f
 		bool agari // The player is agari.
 	)
 	*/
-	std::vector<std::array<float, 29>> next_states;
+	std::vector<vector_feature_t> next_states;
 	vector<ResponseAction> actions = get_response_actions();
 	for (ResponseAction action : actions) {
 		int turn = this->turn;
@@ -2244,7 +2245,7 @@ std::vector<std::array<float, 29>> Table::_get_response_action_vector_features_f
 		std::array<bool, 4> riichi = { players[0].riichi, players[1].riichi, players[2].riichi, players[3].riichi };
 		std::array<bool, 4> double_riichi = { players[0].double_riichi, players[1].double_riichi, players[2].double_riichi, players[3].double_riichi };
 		std::array<bool, 4> ippatsu = { players[0].一发, players[1].一发, players[2].一发, players[3].一发 };
-		std::array<int, 4> hand = { players[0].hand.size(), players[1].hand.size(), players[2].hand.size(), players[3].hand.size() };
+		std::array<int, 4> hand = { (int)players[0].hand.size(), (int)players[1].hand.size(), (int)players[2].hand.size(), (int)players[3].hand.size() };
 		std::array<bool, 4> mentsun = { players[0].门清, players[1].门清, players[2].门清, players[3].门清 };
 		bool agari = false;
 
@@ -2276,7 +2277,7 @@ std::vector<std::array<float, 29>> Table::_get_response_action_vector_features_f
 	return next_states;
 }
 
-std::vector<std::array<float, 34 * 58>> Table::get_next_aval_states_matrix_features_frost2(int playerNo)
+std::vector<matrix_feature_t> Table::get_next_aval_states_matrix_features_frost2(int playerNo)
 {
 	// who make selection?
 	if (who_make_selection() != playerNo)
@@ -2288,12 +2289,12 @@ std::vector<std::array<float, 34 * 58>> Table::get_next_aval_states_matrix_featu
 		return _get_response_action_matrix_features_frost2(this->turn, playerNo);
 }
 
-std::vector<std::array<float, 34 * 58>> Table::_get_self_action_matrix_features_frost2(int playerNo)
+std::vector<matrix_feature_t> Table::_get_self_action_matrix_features_frost2(int playerNo)
 {
 	/*
 	Here we should obtain arguments for this generator function:
 
-	std::array<float, 34 * 58> Table::generate_state_matrix_features_frost2(
+	matrix_feature_t Table::generate_state_matrix_features_frost2(
 		std::vector<Tile*> hand,
 		std::vector<BaseTile> dora,
 		int player_no,
@@ -2306,7 +2307,7 @@ std::vector<std::array<float, 34 * 58>> Table::_get_self_action_matrix_features_
 		Wind self_wind
 	)
 	*/
-	std::vector<std::array<float, 34 * 58>> next_states;
+	std::vector<matrix_feature_t> next_states;
 	vector<SelfAction> actions = get_self_actions();
 	for (SelfAction action : actions) {
 		int player_no = playerNo;
@@ -2380,12 +2381,12 @@ std::vector<std::array<float, 34 * 58>> Table::_get_self_action_matrix_features_
 	return next_states;
 }
 
-std::vector<std::array<float, 34 * 58>> Table::_get_response_action_matrix_features_frost2(int call_player, int response_player)
+std::vector<matrix_feature_t> Table::_get_response_action_matrix_features_frost2(int call_player, int response_player)
 {
 	/*
 	Here we should obtain arguments for this generator function:
 
-	std::array<float, 34 * 58> Table::generate_state_matrix_features_frost2(
+	matrix_feature_t Table::generate_state_matrix_features_frost2(
 		std::vector<Tile*> hand,
 		std::vector<BaseTile> dora,
 		int player_no,
@@ -2398,7 +2399,7 @@ std::vector<std::array<float, 34 * 58>> Table::_get_response_action_matrix_featu
 		Wind self_wind
 	)
 	*/
-	std::vector<std::array<float, 34 * 58>> next_states;
+	std::vector<matrix_feature_t> next_states;
 	vector<ResponseAction> actions = get_response_actions();
 	for (ResponseAction action : actions) {
 		int player_no = response_player;
@@ -2412,14 +2413,15 @@ std::vector<std::array<float, 34 * 58>> Table::_get_response_action_matrix_featu
 		auto self_wind = players[player_no].wind;
 		vector<Tile*> dora_spec;
 		for (int i = 0; i < this->dora_spec; ++i) dora_spec.push_back(宝牌指示牌[i]);
+		auto tile = selected_action.correspond_tiles[0];
 
-		switch (action.action) {
+		switch (action.action) {			
 		case Action::荣和:
 		case Action::抢暗杠:
 		case Action::抢杠:
+			hand.push_back(tile);
 			break;
-		case Action::pass: {
-			auto tile = selected_action.correspond_tiles[0];
+		case Action::pass: {			
 			auto iter =
 				remove_if(hand.begin(), hand.end(), [tile](Tile* t) {return tile == t; });
 			hand.erase(iter, hand.end());
@@ -2501,8 +2503,6 @@ std::vector<std::array<float, 34 * 58>> Table::_get_response_action_matrix_featu
 		default:
 			throw STD_RUNTIME_ERROR_WITH_FILE_LINE_FUNCTION("Bad Action Option.");
 		}
-
-		
 
 		next_states.push_back(generate_state_matrix_features_frost2(hand, dora, player_no, rivers4, fulus4, has_xuanpai, xuanpai, dora_spec, game_wind, self_wind));
 	}
