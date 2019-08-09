@@ -27,7 +27,7 @@ class EnvMahjong2(gym.Env):
         self.printing = printing
 
         self.matrix_feature_size = [34, 58]
-        self.vector_feature_size = 29
+        self.vector_feature_size = 30
 
         self.scores_init = np.zeros([4], dtype=np.float32)
         for i in range(4):
@@ -45,8 +45,8 @@ class EnvMahjong2(gym.Env):
         wind = winds[np.random.random_integers(0, 3)]
         oya = '{}'.format(oya)
 
-        self.t.game_init()
-        # self.t.game_init_with_metadata({"oya": oya, "wind": wind})
+        # self.t.game_init()
+        self.t.game_init_with_metadata({"oya": oya, "wind": wind})
 
         self.game_count += 1
 
@@ -247,8 +247,8 @@ class EnvMahjong2(gym.Env):
 
         S0 = self.t.get_next_aval_states_matrix_features_frost2(playerNo)
         s0 = self.t.get_next_aval_states_vector_features_frost2(playerNo)
-        matrix_features = np.array(S0).reshape([-1, 34, 58])
-        vector_features = np.array(s0).reshape([-1, 29])
+        matrix_features = np.array(S0).reshape([-1, *self.matrix_feature_size])
+        vector_features = np.array(s0).reshape([-1, self.vector_feature_size])
 
         return matrix_features, vector_features
 
