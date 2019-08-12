@@ -157,7 +157,7 @@ class MahjongNetFrost2():
     Mahjong Network Frost 2
     Using CNN + FC layers, purely feed-forward network
     """
-    def __init__(self, graph, agent_no, lr=1e-4, log_dir="../log/", num_tile_type=34, num_each_tile=58, num_vf=29, value_base=10000.0, logging=True):
+    def __init__(self, graph, agent_no, lr=3e-4, log_dir="../log/", num_tile_type=34, num_each_tile=58, num_vf=30, value_base=10000.0, logging=True):
         """Model function for CNN."""
 
         self.block_fn = _building_block_v1  # ResNet block function
@@ -406,7 +406,7 @@ class AgentFrost2():
     Mahjong AI agent with PER
     """
     def __init__(self, nn: MahjongNetFrost2, memory:MahjongBufferFrost2, gamma=0.9999, greedy=0.03, lambd=0.975, alpha=0.99,
-                 num_tile_type=34, num_each_tile=55, num_vf=29):
+                 num_tile_type=34, num_each_tile=55, num_vf=30):
         self.nn = nn
         self.gamma = gamma  # discount factor
         self.greedy = greedy
@@ -567,8 +567,8 @@ class AgentFrost2():
             for b in range(batch_size):
                 n_t, Sp, sp, r_t, done_t, a_t, mu_t, length, e_index, e_weight = self.memory.sample_episode()
 
-                start_t = np.random.randint(1 - sequence_length, length - 2)
-                sampled_ts = np.arange(max(0, start_t), min(length - 1, start_t + sequence_length))
+                start_t = np.random.randint(1 - sequence_length, length - 1)
+                sampled_ts = np.arange(max(0, start_t), min(length, start_t + sequence_length))
 
                 l = len(sampled_ts)
                 n_t = n_t[sampled_ts]

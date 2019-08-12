@@ -1,7 +1,3 @@
-
-# coding: utf-8
-
-
 from aiFrost2 import AgentFrost2, MahjongNetFrost2
 import tensorflow as tf
 import numpy as np
@@ -12,11 +8,11 @@ from wrapper import EnvMahjong2
 import scipy.io as sio
 from datetime import datetime
 import time
+import warnings
+
 
 now = datetime.now()
 datetime_str = now.strftime("%Y%m%d-%H%M%S")
-
-graphs = [tf.Graph(), tf.Graph(), tf.Graph(), tf.Graph() ]
 
 env = EnvMahjong2()
 
@@ -24,56 +20,49 @@ num_tile_type = env.matrix_feature_size[0]
 num_each_tile = env.matrix_feature_size[1]
 num_vf = env.vector_feature_size
 
-agents = [AgentFrost2(nn=MahjongNetFrost2(graphs[i], agent_no=i, num_tile_type=num_tile_type, num_each_tile=num_each_tile, num_vf=num_vf),
-                      memory=MahjongBufferFrost2(size=4096, num_tile_type=num_tile_type, num_each_tile=num_each_tile, num_vf=num_vf),
-                      greedy=10.0 ** np.random.uniform(-1, 1),
+episode_start = 2000
+episode_savebuffer = 500
+buffer_size = 4000
+
+# initialize agent
+
+graphs = [tf.Graph(), tf.Graph(), tf.Graph(), tf.Graph() ]
+
+shared_buffer = MahjongBufferFrost2(size=buffer_size, num_tile_type=num_tile_type,
+                                    num_each_tile=num_each_tile, num_vf=num_vf)
+
+##  以下的代码可以让Agent读取保存的对局buffer， 如果comment掉就可以让Agent从头开始训练
+
+# buffer_path =  "./buffer/Agent0-MahjongBufferFrost220190809-172054.pkl"
+# shared_buffer.load(buffer_path)
+
+
+agents = [AgentFrost2(nn=MahjongNetFrost2(graphs[i], agent_no=i, num_tile_type=num_tile_type, lr=3e-4,
+                                          num_each_tile=num_each_tile, num_vf=num_vf, value_base=10000),
+                      memory=shared_buffer,
+                      greedy=10.0 ** np.random.uniform(-2.5, -1), alpha=0.975,
                       num_tile_type=num_tile_type, num_each_tile=num_each_tile, num_vf=num_vf)
           for i in range(4)]
-
-
-episode_start = 256
-episode_savebuffer = 1024
 mu_size = agents[0].memory.max_action_num
 max_steps = agents[0].memory.episode_length
 
 
-# ##  以下的代码可以让Agent读取保存的对局buffer， 如果comment掉就可以让Agent从头开始训练
-
-# In[ ]:
-
-
-# # example 
-# for i in range(4):
-#     buffer_path =  "./buffer/Agent{}".format(i) + "-MahjongBufferFrost220190612-140356.pkl"
-#     agents[i].memory.load(buffer_path)
-
 
 # ##  以下的代码可以让Agent读取保存的网络， 如果comment掉就可以让Agent从头开始训练
 
-# In[ ]:
-
-
-# # example 
+# # example
 # for i in range(4):
 #     model_path =  "../log/Agent{}".format(i) + "-20190531-150059-Game0/naiveAI.ckpt"
 #     agents[i].nn.restore(model_path)
-    
-
-
-# # Note:
-# 
-
-# In[ ]:
-
-
 
 
 n_games = 1000000
-
+n = 0
 print("Start!")
 
-for n in range(n_games):
-#     try:
+while n <= n_games:
+    n += 1
+    #     try:
     if (n + 1) % 10000 == 0:
         for i in range(4):
             agents[i].nn.save(model_dir="Agent{}-".format(i) + datetime_str + "-Game{}".format(
@@ -122,17 +111,23 @@ for n in range(n_games):
             aval_actions = env.t.get_self_actions()
             good_actions = []
 
-            #             if agents[who].memory.filled_size < episode_start:  # For collecting data only
-            for a in range(len(aval_actions)):
-                if aval_actions[a].action == mp.Action.Riichi:
-                    good_actions.append(a)
-
-                if aval_actions[a].action == mp.Action.Tsumo:
-                    good_actions.append(a)
+            # if agents[who].memory.filled_size < episode_start:  # For collecting data only
+            #     for a in range(len(aval_actions)):
+            #         if aval_actions[a].action == mp.Action.Riichi:
+            #             good_actions.append(a)
+            #
+            #         if aval_actions[a].action == mp.Action.Tsumo:
+            #             good_actions.append(a)
             #######################################
 
             next_aval_matrix_states, next_aval_vector_states = env.get_aval_next_states(who)  ## for a single player
             next_aval_states = (next_aval_matrix_states, next_aval_vector_states)
+
+            if not len(aval_actions) == len(next_aval_matrix_states):
+                warnings.warn("len(aval_actions) != len(next_aval_matrix_states)")
+            if len(aval_actions) == 0:
+                warnings.warn("len(aval_actions) == 0")
+                continue
 
             if len(good_actions) > 0:
                 good_actions = np.reshape(good_actions, [-1, ])
@@ -169,8 +164,13 @@ for n in range(n_games):
                 next_aval_matrix_states, next_aval_vector_states = env.get_aval_next_states(i)  ## for a single player
                 next_aval_states = (next_aval_matrix_states, next_aval_vector_states)
 
-                ######################## 能和则和，能立直则立直 ##############
                 aval_actions = env.t.get_response_actions()
+
+                if not len(aval_actions) == len(next_aval_matrix_states):
+                    warnings.warn("len(aval_actions) != len(next_aval_matrix_states)")
+                if len(aval_actions) == 0:
+                    warnings.warn("len(aval_actions) == 0")
+                    continue
 
                 aval_actions_lens[i] = len(aval_actions)
                 episode_next_matrix_features[i, agent_step[i], 0:aval_actions_lens[i]] = next_aval_matrix_states
@@ -178,16 +178,17 @@ for n in range(n_games):
 
                 good_actions = []
 
-                #                 if agents[i].memory.filled_size < episode_start:  # For collecting data only
-                for a in range(len(aval_actions)):
-                    if aval_actions[a].action == mp.Action.Ron:
-                        good_actions.append(a)
-
-                    if aval_actions[a].action == mp.Action.ChanKan:
-                        good_actions.append(a)
-
-                    if aval_actions[a].action == mp.Action.ChanAnKan:
-                        good_actions.append(a)
+                ######################## 能和则和，能立直则立直 ##############
+                # if agents[i].memory.filled_size < episode_start:  # For collecting data only
+                #     for a in range(len(aval_actions)):
+                #         if aval_actions[a].action == mp.Action.Ron:
+                #             good_actions.append(a)
+                #
+                #         if aval_actions[a].action == mp.Action.ChanKan:
+                #             good_actions.append(a)
+                #
+                #         if aval_actions[a].action == mp.Action.ChanAnKan:
+                #             good_actions.append(a)
                 ##########################################################
                 if len(good_actions) > 0:
                     good_actions = np.reshape(good_actions, [-1, ])
@@ -226,13 +227,8 @@ for n in range(n_games):
                 this_states[i] = deepcopy(next_states[i])
 
         step += 1
-        #         if done or step == max_steps:
-        #             print('done = {}'.format(done))
-        #             print(env.get_phase_text())
 
-
-        #         print("Game {}, step {}".format(n, step))
-
+        # print("Game {}, step {}".format(n, step))
 
         if env.t.get_phase() == 16:  # GAME_OVER
 
@@ -240,7 +236,7 @@ for n in range(n_games):
 
             for i in range(4):
 
-                agents[i].statistics(i, env.t.get_result(), env.get_final_score_change(), env.t.turn,
+                agents[i].statistics(i, env.t.get_result(), final_score_change, agent_step[i],
                                      env.t.players[i].riichi, env.t.players[i].menchin)
 
                 if agent_step[i] >= 1:  # if not 1st turn end
@@ -249,27 +245,7 @@ for n in range(n_games):
 
             if not np.max(final_score_change) == 0:  ## score change
                 for i in range(4):
-                    agents[i].remember_episode(episode_num_aval_actions[i],
-                                               episode_next_matrix_features[i],
-                                               episode_next_vector_features[i],
-                                               episode_rewards[i],
-                                               episode_dones[i],
-                                               episode_actions[i],
-                                               episode_policies[i],
-                                               weight=0)
-                print(' ')
-                print(env.t.get_result().result_type, end='')
-                print(": Totally {} steps".format(step))
-
-                try:
-                    with open("./Paipu/" + datetime_str + "game{}".format(n) + ".txt", 'w') as fp:
-                        fp.write(mp.GameLogToString(env.t.game_log).decode('GBK'))
-                except:
-                    pass
-
-            else:
-                if np.random.rand() < 0.0025 + (n / 500000) ** 2:  ## no score change
-                    for i in range(4):
+                    if agent_step[i] >= 1:  # avoid 九种九牌
                         agents[i].remember_episode(episode_num_aval_actions[i],
                                                    episode_next_matrix_features[i],
                                                    episode_next_vector_features[i],
@@ -278,21 +254,44 @@ for n in range(n_games):
                                                    episode_actions[i],
                                                    episode_policies[i],
                                                    weight=0)
+                print(' ')
+                print(env.t.get_result().result_type, end='')
+                print(": Totally {} steps".format(step))
+
+                try:
+                    with open("./Paipu/" + "{}p".format(
+                            int(np.max(final_score_change))) + datetime_str + "game{}".format(n) + ".txt", 'w') as fp:
+                        fp.write(mp.GameLogToString(env.t.game_log).decode('GBK'))
+                except:
+                    pass
+
+            else:
+                if np.random.rand() < (1.0 - n / 100000.0):  ## no score change
+                    for i in range(4):
+                        if agent_step[i] >= 1:  # avoid 九种九牌
+                            agents[i].remember_episode(episode_num_aval_actions[i],
+                                                       episode_next_matrix_features[i],
+                                                       episode_next_vector_features[i],
+                                                       episode_rewards[i],
+                                                       episode_dones[i],
+                                                       episode_actions[i],
+                                                       episode_policies[i],
+                                                       weight=0)
                     print(' ')
                     print(env.t.get_result().result_type, end='')
                     print(": Totally {} steps".format(step))
 
-            for n_train in range(4):
+            for n_train in range(2):
                 for i in range(4):
                     agents[i].learn(env.symmetric_matrix_features, episode_start=episode_start,
                                     care_lose=False, logging=True)
-#     except:
+# except:
 #         pass
 
 
 data = {"rons": env.final_score_changes, "p0_stat": agents[0].stat, "p1_stat": agents[1].stat,
         "p2_stat": agents[2].stat, "p3_stat": agents[3].stat, }
-sio.savemat("./final_score_changes" + datetime_str + ".mat", data)
+sio.savemat("./stats" + datetime_str + ".mat", data)
 
 # In[ ]:
 
