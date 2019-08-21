@@ -2,6 +2,7 @@ import numpy as np
 import random
 import sparse as sps
 import pickle
+import warnings
 
 class MahjongBufferFrost2():
     # Record Episodes
@@ -92,6 +93,8 @@ class MahjongBufferFrost2():
         :return: None
         """
 
+        if not np.sum(d) == 1:
+            warnings.warn("done_t of this episode is not proper!")
         length = np.where(d == 1)[0].item() + 1
 
         Sp = Sp.reshape([Sp.shape[0], Sp.shape[1], self.num_tile_type * self.num_each_tile])
