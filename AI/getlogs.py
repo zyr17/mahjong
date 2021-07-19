@@ -24,7 +24,7 @@ game_wind_ind = 60
 self_wind_ind = 61
 wait_tile_ind = 62
 
-aka_tile_ids = [16, 16 + 36, 16 + 36 + 36]
+aka_tile_ints = [16, 16 + 36, 16 + 36 + 36]
 player_obs_width = 63
 
 UNICODE_TILES = """
@@ -76,13 +76,12 @@ def decodem(naru_tile_int, naru_player_id):
         start_tile_id = int(int(bit10_15 / 3) / 7) * 9 + int(bit10_15 / 3) % 7
 
         side_tiles_added = [[start_tile_id * 4 + bit4_5, 0], [start_tile_id * 4 + 4 + bit6_7, 0],
-                           [start_tile_id * 4 + 8 + bit8_9, 0]]
+                            [start_tile_id * 4 + 8 + bit8_9, 0]]
         # TODO: check aka!
         side_tiles_added[which_naru][1] = 1
 
-        for st in side_tiles_added:
-            if st[0] in [16, 16 + 36, 16 + 36 + 36]:
-                print("Aka!!!")
+        if side_tiles_added[which_naru][0] in aka_tile_ints:
+            print("Aka!!!")
 
         print(UNICODE_TILES[start_tile_id], UNICODE_TILES[start_tile_id + 1], UNICODE_TILES[start_tile_id + 2])
 
@@ -108,35 +107,41 @@ def decodem(naru_tile_int, naru_player_id):
 
             side_tiles_added[which_naru][1] = 1
 
-            for st in side_tiles_added:
-                if st[0] in [16, 16 + 36, 16 + 36 + 36]:
-                    print("Aka!!!")
+            if side_tiles_added[which_naru][0] in [16, 16 + 36, 16 + 36 + 36]:
+                print("Aka!!!")
+
             # TODO: check aka!
 
             print(UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id])
 
         else:
 
-            which_naru = naru_tiles_int % 4
-
-            bit8_15 = int(binaries[:8], 2)
-
             bit5_6 = int(binaries[-7:-5], 2)
             which_kan = bit5_6
 
-            kan_tile = bit8_15
-            kan_tile_id = int(kan_tile / 4)
-
-            if kan_tile_id in [4, 13, 22]:
-                print("Aka !!!")
-
-            side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
-                               [kan_tile_id * 4 + 3, 0]]
-
             if bit4:
                 print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
-                side_tiles_added = side_tiles_added[which_kan]
-            else:
+                bit9_15 = int(binaries[:7], 2)
+
+                kan_tile_id = int(bit9_15 / 3)
+
+                side_tiles_added = [[kan_tile_id * 4 + which_kan, 1]]
+
+            else:  # An-Kan or # Min-Kan
+
+                which_naru = naru_tiles_int % 4
+
+                bit8_15 = int(binaries[:8], 2)
+
+                kan_tile = bit8_15
+                kan_tile_id = int(kan_tile / 4)
+
+                if kan_tile_id in [4, 13, 22]:
+                    print("Aka !!!")
+
+                side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
+                                   [kan_tile_id * 4 + 3, 0]]
+
                 if which_naru == 0:
                     print("An-Kan")
                 else:
@@ -148,7 +153,6 @@ def decodem(naru_tile_int, naru_player_id):
     hand_tiles_removed = 0
 
     return side_tiles_added, hand_tiles_removed
-
 
 
 def dora2indicator(dora_id):
@@ -181,7 +185,7 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
     global self_wind_ind
     global wait_tile_ind
 
-    global aka_tile_ids
+    global aka_tile_ints
 
     # ----------------- Side Tiles Process ------------------
     for player_id, player_side_tiles in enumerate(side_tiles):
@@ -190,7 +194,7 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
             side_tile_id = int(side_tile[0] / 4)
             side_tile_num[side_tile_id] += 1
 
-            if side_tile[0] in aka_tile_ids:
+            if side_tile[0] in aka_tile_ints:
                 # Red dora
                 all_obs[player_id, side_tile_id, player_i_side_start_ind[player_id] + 5] = 1
 
@@ -210,7 +214,7 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
             river_tile_id = int(river_tile[0] / 4)
             river_tile_num[river_tile_id] += 1
 
-            if river_tile[0] in aka_tile_ids:
+            if river_tile[0] in aka_tile_ints:
                 # Red dora
                 all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 5] = 1
 
@@ -234,7 +238,7 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
             hand_tile_id = int(hand_tile / 4)
             hand_tile_num[hand_tile_id] += 1
 
-            if hand_tile in aka_tile_ids:
+            if hand_tile in aka_tile_ints:
                 # Aka dora
                 all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + 5] = 1
 
@@ -511,7 +515,7 @@ for url in paipu_urls:
                 discard_tile = int(child.tag[1:])
                 discard_tile_id = int(discard_tile / 4)
 
-                if discard_tile in aka_tile_ids:
+                if discard_tile in aka_tile_ints:
                     curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
                     curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 5] = 1
 
@@ -534,7 +538,6 @@ for url in paipu_urls:
 
                 naru_tiles_int = int(child.get("m"))
 
-
                 print("==========  Naru =================")
                 side_tiles_added_by_naru, hand_tiles_removed_by_naru = decodem(naru_tiles_int, naru_player_id)
 
@@ -547,7 +550,7 @@ for url in paipu_urls:
 
                 print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
 
-                if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ids:
+                if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ints:
                     print("This naru contains Aka !!")
 
                 print("==========  Naru =================")
