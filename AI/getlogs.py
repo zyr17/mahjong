@@ -8,30 +8,137 @@ import urllib.request
 import gzip
 
 
+# ======================== Terminology explain ======================
+
+# Match: A set of games on one table until someone flys away or a series of games is finished
+# Game: from Init to Agari or Ryukyouku
+# Episode: 1 game for 1 player
+
+player_i_hand_start_ind = [0, 63, 69, 75]  # later 3 in oracle_obs
+player_i_side_start_ind = [6, 12, 18, 24]
+player_i_river_start_ind = [30, 37, 44, 51]
+
+dora_indicator_ind = 58
+dora_ind = 59
+game_wind_ind = 60
+self_wind_ind = 61
+wait_tile_ind = 62
+
+aka_tile_ids = [16, 16 + 36, 16 + 36 + 36]
+
+player_obs_width = 63
+
+
+def dora2indicator(dora_id):
+    if dora_id == 0:  # 1m
+        indicator_id = 8  # 9m
+    elif dora_id == 9:  # 1p
+        indicator_id = 17  # 9p
+    elif dora_id == 18:  # 1s
+        indicator_id = 26  # 9s
+    elif dora_id == 27:  # East
+        indicator_id = 30  # North
+    elif dora_id == 31:  # Hake
+        indicator_id = 33  # Chu
+    else:
+        indicator_id = dora_id - 1
+    return indicator_id
+
+
 def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind):
 
-    this_player_obs = np.zeros([34, 40], dtype=np.uint8)
-    this_oracle_obs = np.zeros([34, 15], dtype=np.uint8)
+    all_obs = np.zeros([4, 34, 63 + 18], dtype=np.uint8)
 
-    # ----------------- River Tiles Procces ------------------
-    for player_river_tile in river_tiles:
-        pass
+    global player_i_hand_start_ind
+    global player_i_side_start_ind
+    global player_i_river_start_ind
+
+    global dora_indicator_ind
+    global dora_ind
+    global game_wind_ind
+    global self_wind_ind
+    global wait_tile_ind
+
+    global aka_tile_ids
 
     # ----------------- Side Tiles Process ------------------
-    for player_side_tile in side_tiles:
-        pass
+    for player_id, player_side_tiles in enumerate(side_tiles):
+        side_tile_num = np.zeros(34, dtype=np.uint8)
+        for side_tile in player_side_tiles:
+            side_tile_id = int(side_tile[0] / 4)
+            side_tile_num[side_tile_id] += 1
+
+            if side_tile[0] in aka_tile_ids:
+                # Red dora
+                all_obs[player_id, side_tile_id, player_i_side_start_ind[player_id] + 5] = 1
+
+            if side_tile[1] == 1:
+                # Naru tile
+                all_obs[player_id, side_tile_id, player_i_side_start_ind[player_id] + 4] = 1
+
+        for t_id in range(34):
+            for k in range(4):
+                if side_tile_num[t_id] > k:
+                    all_obs[player_id, t_id, player_i_side_start_ind[player_id] + k] = 1
+
+    # ----------------- River Tiles Procces ------------------
+    for player_id, player_river_tiles in enumerate(river_tiles):  # 副露也算在牌河里, also include Riichi info
+        river_tile_num = np.zeros(34, dtype=np.uint8)
+        for river_tile in player_river_tiles:
+            river_tile_id = int(river_tile[0] / 4)
+            river_tile_num[river_tile_id] += 1
+
+            if river_tile[0] in aka_tile_ids:
+                # Red dora
+                all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 5] = 1
+
+            if river_tile[1] == 1:
+                # te-kiri (from hand)
+                all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 4] += 1
+
+            if river_tile[2] == 1:
+                # is riichi-announcement tile
+                all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 6] = 1
+
+        for t_id in range(34):
+            for k in range(4):
+                if river_tile_num[t_id] > k:
+                    all_obs[player_id, t_id, player_i_river_start_ind[player_id] + k] = 1
 
     # ----------------- Hand Tiles Process ------------------
+    for player_id, player_hand_tiles in enumerate(hand_tiles):
+        hand_tile_num = np.zeros(34, dtype=np.uint8)
+        for hand_tile in player_hand_tiles:
+            hand_tile_id = int(hand_tile / 4)
+            hand_tile_num[hand_tile_id] += 1
 
-    for player_hand_tile in hand_tiles:
-        pass
+            if hand_tile in aka_tile_ids:
+                # Aka dora
+                all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + 5] = 1
+
+            # how many times this tile has been discarded before by this player
+            all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + 4] = np.sum(
+                all_obs[player_id, hand_tile_id, player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
+
+        for t_id in range(34):
+            for k in range(4):
+                if hand_tile_num[t_id] > k:
+                    all_obs[player_id, t_id, player_i_hand_start_ind[player_id] + k] = 1
 
     # ----------------- Dora Process ------------------
     for dora_tile in dora_tiles:
         dora_hai_id = int(dora_tile / 4)
-        this_player_obs[dora_hai_id, - 5] += 1
+        all_obs[:, dora_hai_id, dora_ind] += 1
+        all_obs[:, dora2indicator(dora_hai_id), dora_indicator_ind] += 1
 
-    return this_player_obs, this_oracle_obs
+    # ----------------- Public Game State ----------------
+    all_obs[:, :, game_wind_ind] = game_wind  # Case 1 to 4 in dim 0
+    all_obs[:, :, self_wind_ind] = self_wind
+
+    players_obs = all_obs[:, :, :63]
+    oracles_obs = all_obs[:, :, 63:]
+
+    return players_obs, oracles_obs
 
 
 paipu_urls = []
@@ -82,7 +189,6 @@ aval_actions_num_total = np.zeros([max_all_steps], dtype=np.uint8)
 
 done_total = np.zeros([max_all_steps], dtype=np.float32)
 reward_total = np.zeros([max_all_steps], dtype=np.float32)
-
 
 hosts = ["e3.mjv.jp",
          "e4.mjv.jp",
@@ -197,14 +303,14 @@ for url in paipu_urls:
             # Oya number
             oya_id = int(child.get("oya"))
 
-            game_wind = np.zeros(34)  # index: -4
-            game_wind[27] = 1
+            game_wind_obs = np.zeros(34)  # index: -4
+            game_wind_obs[27] = 1
 
-            self_wind = np.zeros([4, 34])  # index: -3
-            self_wind[0, 27 + (4 - oya_id) % 4] = 1
-            self_wind[1, 27 + (5 - oya_id) % 4] = 1
-            self_wind[2, 27 + (6 - oya_id) % 4] = 1
-            self_wind[3, 27 + (7 - oya_id) % 4] = 1
+            self_wind_obs = np.zeros([4, 34])  # index: -3
+            self_wind_obs[0, 27 + (4 - oya_id) % 4] = 1
+            self_wind_obs[1, 27 + (5 - oya_id) % 4] = 1
+            self_wind_obs[2, 27 + (6 - oya_id) % 4] = 1
+            self_wind_obs[3, 27 + (7 - oya_id) % 4] = 1
 
             dora_tiles = [int(child.get("seed").split(",")[-1])]
 
@@ -214,13 +320,13 @@ for url in paipu_urls:
                 hand_tiles_player = [int(tmp) for tmp in tiles_str]
                 hand_tiles.append(hand_tiles_player)
 
-            river_tiles = [[], [], [], []]  # each has two elements: tile_no and is_from_hand
-            side_tiles = [[], [], [], []]  # each has 4 elements: tiles_no and naru_tile (e.g., [4, 8, 12, 8])
+            river_tiles = [[], [], [], []]  # each has 3 elements: tile_no, is_from_hand and riichi_announce_tile
+            side_tiles = [[], []]  # each has 2 elements: tile_no and is_naru_tile
 
             # ----------------------- Generate initial player and oracle observaTION  ----------------
 
-            curr_player_obs, curr_oracle_obs = generate_obs(
-                hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind)
+            curr_players_obs, curr_oracles_obs = generate_obs(
+                hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs, self_wind_obs)
 
             game_has_init = True
 
@@ -238,7 +344,11 @@ for url in paipu_urls:
             if child.tag == "DORA":
                 dora_tiles.append(int(child.get("hai")))
                 new_dora_hai_id = int(int(child.get("hai")) / 4)
-                curr_player_obs[new_dora_hai_id, -5] += 1
+
+                curr_player_obs
+                curr_player_obs[new_dora_hai_id, -4] += 1
+                new_dora_indicator_id = dora2indicator(new_dora_hai_id)
+                curr_player_obs[new_dora_indicator_id, -5] += 1
 
             elif child.tag == "REACH":
                 if int(child.get("step")) == 2:
@@ -254,10 +364,12 @@ for url in paipu_urls:
             elif child.tag == "N":  # 鸣牌
                 pass
             elif child.tag == "BYE":  # 掉线
-                #                 print("掉线！！！！！！！！！！")
-                pass
-                # record_this_game = False
+                record_this_game = False
+                continue
             elif child.tag == "RYUUKYOKU" or child.tag == "AGARI":
+
+                # ------------------- Statistics -------------------------
+
                 scores_change_str = child.get("sc").split(",")
                 scores_change = [int(tmp) for tmp in scores_change_str]
                 rewards = scores_change[1::2]
@@ -277,36 +389,15 @@ for url in paipu_urls:
 
                     machi_hai_freq[machi_hai] += 1
 
-                # if np.any(np.array(scores_change[0::2]) + np.array(scores_change[1::2]) < 0):
-                #     print(scores_change)
-                # num_bars_ = child.get("ba").split(",")
-                # num_bars = int(num_bars_[1])
-                # if np.sum(rewards) + num_bars * 10 != 0:
-                #     print(child.get("sc"))
-                ## If someone was flied, reward must be modified because the
-                #                 print(child.tag, child.attrib)
-                #                 print("results:", rewards)
-
                 for player_id in range(4):
                     sum_scores[player_id] += rewards[player_id]
                     scores_change_this_game[player_id] += rewards[player_id]
-
-                # oya_scores += rewards[oya]
 
                 if "owari" in child.attrib:
                     owari_scores_change_str = child.get("sc").split(",")
                     owari_scores_change = [int(tmp) for tmp in owari_scores_change_str]
                     if np.sum(owari_scores_change) > 1000:
                         print(owari_scores_change)
-
-                    # for player_id in range(4):
-                    #     sum_scores[player_id] += owari_scores_change[player_id * 2] + owari_scores_change[player_id * 2 + 1] - 250
-
-                # if child.tag == "RYUUKYOKU":
-                #     print("------------------")
-                #     print(child.get("ba"))
-                #     print(scores_change_this_game)
-                #     print("------------------")
 
                 num_games += 1
                 if num_games % 100 == 0:
