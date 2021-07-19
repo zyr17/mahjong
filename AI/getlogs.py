@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 import urllib.request
 import gzip
 
-
 # ======================== Terminology explain ======================
 
 # Match: A set of games on one table until someone flys away or a series of games is finished
@@ -43,6 +42,8 @@ def decodem(naru_tile_int, naru_player_id):
     # ---------------------------------
     binaries = bin(naru_tiles_int)[2:]
 
+    has_aka = False
+
     if len(binaries) < 16:
         binaries = "0" * (16 - len(binaries)) + binaries
 
@@ -51,7 +52,7 @@ def decodem(naru_tile_int, naru_player_id):
     bit4 = int(binaries[-5], 2)
 
     if bit2:
-        print("Chi")
+        #         print("Chi")
 
         bit0_1 = int(binaries[-2:], 2)
 
@@ -65,9 +66,9 @@ def decodem(naru_tile_int, naru_player_id):
             source = "self"
 
         bit10_15 = int(binaries[:6], 2)
-        bit4_5 = int(binaries[-6:-4], 2)
-        bit6_7 = int(binaries[-8:-6], 2)
-        bit8_9 = int(binaries[-10:-8], 2)
+        bit3_4 = int(binaries[-5:-3], 2)
+        bit5_6 = int(binaries[-7:-5], 2)
+        bit7_8 = int(binaries[-9:-7], 2)
 
         which_naru = bit10_15 % 3
 
@@ -75,22 +76,24 @@ def decodem(naru_tile_int, naru_player_id):
 
         start_tile_id = int(int(bit10_15 / 3) / 7) * 9 + int(bit10_15 / 3) % 7
 
-        side_tiles_added = [[start_tile_id * 4 + bit4_5, 0], [start_tile_id * 4 + 4 + bit6_7, 0],
-                            [start_tile_id * 4 + 8 + bit8_9, 0]]
+        side_tiles_added = [[start_tile_id * 4 + bit3_4, 0], [start_tile_id * 4 + 4 + bit5_6, 0],
+                            [start_tile_id * 4 + 8 + bit7_8, 0]]
         # TODO: check aka!
         side_tiles_added[which_naru][1] = 1
 
         if side_tiles_added[which_naru][0] in aka_tile_ints:
-            print("Aka!!!")
+            print("Chi Aka!!!")
+            print(bit3_4, bit5_6, bit7_8)
 
-        print(UNICODE_TILES[start_tile_id], UNICODE_TILES[start_tile_id + 1], UNICODE_TILES[start_tile_id + 2])
+            has_aka = True
 
-        print(UNICODE_TILES[start_tile_id + which_naru])
+            print(UNICODE_TILES[start_tile_id], UNICODE_TILES[start_tile_id + 1], UNICODE_TILES[start_tile_id + 2])
+            print(UNICODE_TILES[start_tile_id + which_naru])
+
         ##### To judge aka, trace previous discarded tile !
 
     else:
         if bit3:
-            print("Pon")
 
             bit9_15 = int(binaries[:7], 2)
 
@@ -98,7 +101,7 @@ def decodem(naru_tile_int, naru_player_id):
             pon_tile_id = int(int(bit9_15 / 3))
 
             side_tiles_added = [[pon_tile_id * 4, 0], [pon_tile_id * 4 + 1, 0], [pon_tile_id * 4 + 2, 0],
-                               [pon_tile_id * 4 + 3, 0]]
+                                [pon_tile_id * 4 + 3, 0]]
 
             bit5_6 = int(binaries[-7:-5], 2)
             which_not_poned = bit5_6
@@ -108,11 +111,9 @@ def decodem(naru_tile_int, naru_player_id):
             side_tiles_added[which_naru][1] = 1
 
             if side_tiles_added[which_naru][0] in [16, 16 + 36, 16 + 36 + 36]:
-                print("Aka!!!")
-
-            # TODO: check aka!
-
-            print(UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id])
+                print("Pon, Aka!!!")
+                has_aka = True
+                print(UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id])
 
         else:
 
@@ -120,7 +121,7 @@ def decodem(naru_tile_int, naru_player_id):
             which_kan = bit5_6
 
             if bit4:
-                print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
+                #                 print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
                 bit9_15 = int(binaries[:7], 2)
 
                 kan_tile_id = int(bit9_15 / 3)
@@ -137,22 +138,24 @@ def decodem(naru_tile_int, naru_player_id):
                 kan_tile_id = int(kan_tile / 4)
 
                 if kan_tile_id in [4, 13, 22]:
-                    print("Aka !!!")
+                    print("Kan Aka !!!")
+                    has_aka = True
+                    print(UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id],
+                          UNICODE_TILES[kan_tile_id])
 
                 side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
-                                   [kan_tile_id * 4 + 3, 0]]
+                                    [kan_tile_id * 4 + 3, 0]]
 
                 if which_naru == 0:
-                    print("An-Kan")
+                    # print("An-Kan")
+                    pass
                 else:
-                    print("Min-Kan")
+                    # print("Min-Kan")
                     side_tiles_added[which_kan][1] = 1
-
-            print(UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id])
 
     hand_tiles_removed = 0
 
-    return side_tiles_added, hand_tiles_removed
+    return side_tiles_added, hand_tiles_removed, has_aka
 
 
 def dora2indicator(dora_id):
@@ -172,7 +175,6 @@ def dora2indicator(dora_id):
 
 
 def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind):
-
     all_obs = np.zeros([4, 34, 63 + 18], dtype=np.uint8)
 
     global player_i_hand_start_ind
@@ -244,7 +246,8 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
 
             # how many times this tile has been discarded before by this player
             all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + 4] = np.sum(
-                all_obs[player_id, hand_tile_id, player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
+                all_obs[player_id, hand_tile_id,
+                player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
 
         for t_id in range(34):
             for k in range(4):
@@ -277,7 +280,7 @@ filenames = []
 for file in files:  # 遍历文件夹
     if not os.path.isdir(file) and file[-4:] == "html":  # 判断是否是文件夹，不是文件夹才打开
         filenames.append(path + "/" + file)  # 打开文件
-        print(file)
+#         print(file)
 
 for filename in filenames:
 
@@ -538,22 +541,22 @@ for url in paipu_urls:
 
                 naru_tiles_int = int(child.get("m"))
 
-                print("==========  Naru =================")
-                side_tiles_added_by_naru, hand_tiles_removed_by_naru = decodem(naru_tiles_int, naru_player_id)
+                #                 print("==========  Naru =================")
+                side_tiles_added_by_naru, hand_tiles_removed_by_naru, has_aka = decodem(naru_tiles_int, naru_player_id)
 
-                print("------------ check --------")
+                #                 print("------------ check --------")
 
                 if int(root[child_no - 1].tag == "REACH"):
                     trace_back_steps = 2
                 else:
                     trace_back_steps = 1
 
-                print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
-
-                if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ints:
+                # if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ints:
+                if has_aka:
+                    print(root[child_no - trace_back_steps].tag)
+                    print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
                     print("This naru contains Aka !!")
-
-                print("==========  Naru =================")
+                    print("==========  Naru =================")
                 # add into side tiles
 
                 # remove from hand tiles
