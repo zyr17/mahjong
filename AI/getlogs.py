@@ -1,9 +1,38 @@
 import re
 import os
+import warnings
+
 import numpy as np
 import xml.etree.ElementTree as ET
 import urllib.request
 import gzip
+
+
+def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind):
+
+    this_player_obs = np.zeros([34, 40], dtype=np.uint8)
+    this_oracle_obs = np.zeros([34, 15], dtype=np.uint8)
+
+    # ----------------- River Tiles Procces ------------------
+    for player_river_tile in river_tiles:
+        pass
+
+    # ----------------- Side Tiles Process ------------------
+    for player_side_tile in side_tiles:
+        pass
+
+    # ----------------- Hand Tiles Process ------------------
+
+    for player_hand_tile in hand_tiles:
+        pass
+
+    # ----------------- Dora Process ------------------
+    for dora_tile in dora_tiles:
+        dora_hai_id = int(dora_tile / 4)
+        this_player_obs[dora_hai_id, - 5] += 1
+
+    return this_player_obs, this_oracle_obs
+
 
 paipu_urls = []
 
@@ -42,14 +71,18 @@ max_ten_diff = 250  # 最大点数限制，排除点数差距过大时的非正�
 min_dan = 15  # 最低段位限制，可以排除三麻的局（三麻的缺省player的dan=0）
 
 max_aval_action_num = 16
-max_all_steps = 1000000
+max_all_steps = 100000
 max_steps = 200
 
-player_obs_total = np.zeros([max_all_steps, 10, 34, 4], dtype=np.uint8)
-oracle_obs_total = np.zeros([max_all_steps, 2, 34, 4], dtype=np.uint8)
-player_actions_total = np.zeros([max_all_steps, max_aval_action_num, 10, 34, 4], dtype=np.uint8)
-oracle_actions_total = np.zeros([max_all_steps, max_aval_action_num, 2, 34, 4], dtype=np.uint8)
+player_obs_total = np.zeros([max_all_steps, 1, 34, 40], dtype=np.uint8)
+oracle_obs_total = np.zeros([max_all_steps, 1, 34, 15], dtype=np.uint8)
+player_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 40], dtype=np.uint8)
+oracle_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 15], dtype=np.uint8)
 aval_actions_num_total = np.zeros([max_all_steps], dtype=np.uint8)
+
+done_total = np.zeros([max_all_steps], dtype=np.float32)
+reward_total = np.zeros([max_all_steps], dtype=np.float32)
+
 
 hosts = ["e3.mjv.jp",
          "e4.mjv.jp",
@@ -58,10 +91,12 @@ hosts = ["e3.mjv.jp",
          "e.mjv.jp"]
 
 num_games = 0
+game_has_init = False
 
 sum_scores = np.zeros(4, dtype=np.float64)
 oya_scores = np.zeros(1, dtype=np.float64)
 
+machi_hai_freq = np.zeros(136, dtype=np.float64)
 # ----------------- start ---------------------
 
 for url in paipu_urls:
@@ -92,7 +127,7 @@ for url in paipu_urls:
     # =================== 开始解析牌谱 =======================
     record_this_game = True
 
-    for child in root:
+    for child_no, child in enumerate(root):
         # Initial information, discard
         if child.tag == "SHUFFLE":
             #         print(child.attrib)
@@ -143,11 +178,11 @@ for url in paipu_urls:
             #         print(child.attrib)
 
             #         print("------------------------------------")
-            player_obs = np.zeros([4, max_steps, 10, 34, 4], dtype=np.uint8)
-            oracle_obs = np.zeros([4, max_steps, 2, 34, 4], dtype=np.uint8)
-            player_actions = np.zeros([4, max_steps, max_aval_action_num, 10, 34, 4], dtype=np.uint8)
-            oracle_actions = np.zeros([4, max_steps, max_aval_action_num, 2, 34, 4], dtype=np.uint8)
-            aval_actions_num = np.zeros([4, max_steps], dtype=np.uint8)
+            # player_obs = np.zeros([4, max_steps, 1, 34, 60], dtype=np.uint8)
+            # oracle_obs = np.zeros([4, max_steps, 1, 34, 15], dtype=np.uint8)
+            # player_actions = np.zeros([4, max_steps, max_aval_action_num, 1, 34, 60], dtype=np.uint8)
+            # oracle_actions = np.zeros([4, max_steps, max_aval_action_num, 1, 34, 15], dtype=np.uint8)
+            # aval_actions_num = np.zeros([4, max_steps], dtype=np.uint8)
 
             # scores_number
             scores_str = child.get("ten").split(',')
@@ -162,17 +197,53 @@ for url in paipu_urls:
             # Oya number
             oya_id = int(child.get("oya"))
 
-        #             print("=====================================")
+            game_wind = np.zeros(34)  # index: -4
+            game_wind[27] = 1
+
+            self_wind = np.zeros([4, 34])  # index: -3
+            self_wind[0, 27 + (4 - oya_id) % 4] = 1
+            self_wind[1, 27 + (5 - oya_id) % 4] = 1
+            self_wind[2, 27 + (6 - oya_id) % 4] = 1
+            self_wind[3, 27 + (7 - oya_id) % 4] = 1
+
+            dora_tiles = [int(child.get("seed").split(",")[-1])]
+
+            hand_tiles = []
+            for player_id in range(4):
+                tiles_str = child.get("hai{}".format(player_id)).split(",")
+                hand_tiles_player = [int(tmp) for tmp in tiles_str]
+                hand_tiles.append(hand_tiles_player)
+
+            river_tiles = [[], [], [], []]  # each has two elements: tile_no and is_from_hand
+            side_tiles = [[], [], [], []]  # each has 4 elements: tiles_no and naru_tile (e.g., [4, 8, 12, 8])
+
+            # ----------------------- Generate initial player and oracle observaTION  ----------------
+
+            curr_player_obs, curr_oracle_obs = generate_obs(
+                hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind)
+
+            game_has_init = True
+
         # ------------------------- Actions ---------------------------
 
         elif record_this_game:
 
+            if not game_has_init:
+                record_this_game = False
+                for cc in range(min(child_no + 4, len(root))):
+                    print(root[cc].tag, root[cc].attrib)
+                warnings.warn("============= Game has not been correctly initialized, skipped ================")
+                continue
+
             if child.tag == "DORA":
-                pass
+                dora_tiles.append(int(child.get("hai")))
+                new_dora_hai_id = int(int(child.get("hai")) / 4)
+                curr_player_obs[new_dora_hai_id, -5] += 1
+
             elif child.tag == "REACH":
-                if int(child.get("step") == 2):
+                if int(child.get("step")) == 2:
                     player_id = int(child.get("who"))
-                    # sum_scores[player_id] -= 10
+                    sum_scores[player_id] -= 10
                     scores_change_this_game[player_id] -= 10
                     # if oya == player_id:
                     #     oya_scores -= 10
@@ -191,6 +262,21 @@ for url in paipu_urls:
                 scores_change = [int(tmp) for tmp in scores_change_str]
                 rewards = scores_change[1::2]
 
+                oya_scores += rewards[oya_id]
+
+                if child.tag == "AGARI":
+
+                    # double-ron
+                    if len(child.get("who")) > 1:
+                        for c in root:
+                            print(c.tag, c.attrib)
+                        raise ValueError("from who is not single player!!!")
+
+                    machi_hai_str = child.get("machi").split(",")
+                    machi_hai = np.array([int(tmp) for tmp in machi_hai_str]).astype(np.int)
+
+                    machi_hai_freq[machi_hai] += 1
+
                 # if np.any(np.array(scores_change[0::2]) + np.array(scores_change[1::2]) < 0):
                 #     print(scores_change)
                 # num_bars_ = child.get("ba").split(",")
@@ -201,9 +287,10 @@ for url in paipu_urls:
                 #                 print(child.tag, child.attrib)
                 #                 print("results:", rewards)
 
-                # for player_id in range(4):
-                #     sum_scores[player_id] += rewards[player_id]
-                #     scores_change_this_game[player_id] += rewards[player_id]
+                for player_id in range(4):
+                    sum_scores[player_id] += rewards[player_id]
+                    scores_change_this_game[player_id] += rewards[player_id]
+
                 # oya_scores += rewards[oya]
 
                 if "owari" in child.attrib:
@@ -212,9 +299,8 @@ for url in paipu_urls:
                     if np.sum(owari_scores_change) > 1000:
                         print(owari_scores_change)
 
-                    for player_id in range(4):
-                        sum_scores[player_id] += owari_scores_change[player_id * 2] + owari_scores_change[player_id * 2 + 1] - 250
-                        oya_scores += owari_scores_change[oya_id * 2] + owari_scores_change[oya_id * 2 + 1] - 250
+                    # for player_id in range(4):
+                    #     sum_scores[player_id] += owari_scores_change[player_id * 2] + owari_scores_change[player_id * 2 + 1] - 250
 
                 # if child.tag == "RYUUKYOKU":
                 #     print("------------------")
@@ -227,6 +313,12 @@ for url in paipu_urls:
                     print(num_games)
                     print("avg_scores:", sum_scores / num_games)
                     print("avg_oya_scores:", oya_scores / num_games)
+                    # print("machi hai frequency:", machi_hai_freq / num_games)
+
+                if child_no + 1 < len(root) and root[child_no + 1].tag == "AGARI":
+                    game_has_init = True  # many players agari
+                else:
+                    game_has_init = False
 
             else:
                 print(child.tag, child.attrib)
