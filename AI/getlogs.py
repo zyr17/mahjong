@@ -539,12 +539,13 @@ for url in paipu_urls:
                 side_tiles_added_by_naru, hand_tiles_removed_by_naru = decodem(naru_tiles_int, naru_player_id)
 
                 print("------------ check --------")
-                print("narued tile is", UNICODE_TILES[int(int(root[child_no - 1].tag[1:]) / 4)])
 
                 if int(root[child_no - 1].tag == "REACH"):
                     trace_back_steps = 2
                 else:
                     trace_back_steps = 1
+
+                print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
 
                 if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ids:
                     print("This naru contains Aka !!")
