@@ -150,7 +150,7 @@ def decodem(naru_tile_int, naru_player_id):
                     if kk != which_kan:
                         hand_tiles_removed.append(ss[0])
 
-            else:  # An-Kan or # Min-Kan
+            else:  # An-Kan or Min-Kan
 
                 which_naru = naru_tiles_int % 4
 
@@ -158,6 +158,8 @@ def decodem(naru_tile_int, naru_player_id):
 
                 kan_tile = bit8_15
                 kan_tile_id = int(kan_tile / 4)
+
+                which_kan = kan_tile % 4
 
                 side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
                                     [kan_tile_id * 4 + 3, 0]]
@@ -172,7 +174,7 @@ def decodem(naru_tile_int, naru_player_id):
 
                     hand_tiles_removed = []
                     for kk, ss in enumerate(side_tiles_added):
-                        if kk != which_kan:
+                        if ss != which_kan:
                             hand_tiles_removed.append(ss[0])
 
     return side_tiles_added, hand_tiles_removed, naru_is_aka, naru_type
@@ -237,14 +239,14 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
 
             river_tile_num[river_tile_id] += 1
 
-            if river_tile[0] in aka_tile_ints: # Red dora
+            if river_tile[0] in aka_tile_ints:  # Red dora
                 all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 5] = 1
 
             # te-kiri (from hand)
             all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 4] += river_tile[1]
 
             # is riichi-announcement tile
-            all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 6] = river_tile[2]
+            all_obs[player_id, river_tile_id, player_i_river_start_ind[player_id] + 6] += river_tile[2]
 
         for t_id in range(34):
             for k in range(4):
@@ -615,10 +617,9 @@ for url in paipu_urls:
                 if discard_tile in aka_tile_ints:
                     curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
                     curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 5] = 1
-                if is_from_hand:
-                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += 1
-                if is_riichi_announcement_tile:
-                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = 1
+
+                curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += is_from_hand
+                curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = is_riichi_announcement_tile
 
                 river_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id,
                                         player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
@@ -645,7 +646,7 @@ for url in paipu_urls:
                 side_tiles_added_by_naru, hand_tiles_removed_by_naru, naru_is_aka, naru_type = decodem(
                     naru_tiles_int, naru_player_id)
 
-                print("This game has ", naru_type)
+                # print("This game has ", naru_type)
 
                 if int(root[child_no - 1].tag == "REACH"):
                     trace_back_steps = 2
@@ -736,8 +737,39 @@ for url in paipu_urls:
 
                 # ---------------------- Check observation generation ---------------
 
-                curr_all_obs_final = generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs,
-                                                  self_wind_obs)
+                if child.tag == "AGARI":
+
+                    agari_player_id = int(child.get("who"))
+                    # ---------------- update observations ---------------------
+                    agari_tile = int(child.get("machi"))
+                    agari_tile_id = int(agari_tile / 4)
+
+                    if child.get("who") != child.get("fromWho"):  # not tsumo
+                        hand_num_tile = np.sum(curr_all_obs[agari_player_id, agari_tile_id,
+                                                            player_i_hand_start_ind[agari_player_id]:player_i_hand_start_ind[agari_player_id] + 4])
+                        curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[agari_player_id] + hand_num_tile] = 1
+                    # can choose to agari or not
+                    # TODO: consider tsumo
+
+                    # ---------------- update game states ----------------------
+                    # hand_tiles[agari_player_id].append(agari_tile)
+                    hand_tiles[agari_player_id] = [int(hai) for hai in child.get("hai").split(",")]
+                    # TODO: record state transition
+
+                # Multiple player Agari:
+                if child_no + 1 < len(root) and root[child_no + 1].tag == "AGARI" or root[child_no + 1].tag == "BYE":
+                    continue
+
+                curr_all_obs_final = generate_obs(
+                    hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs, self_wind_obs)
+
+                if root[child_no - 2].tag == "REACH" and root[child_no - 2].get("step") == '1':  # Riichi Tile Ron
+                    riichi_tile = int(root[child_no - 1].tag[1:])
+                    riichi_player_id = int(root[child_no - 2].get("who"))
+                    riichi_tile_id = int(riichi_tile / 4)
+                    curr_all_obs[riichi_player_id, riichi_tile_id, player_i_river_start_ind[riichi_player_id] + 6] = 0
+
+                    curr_all_obs_final[riichi_player_id, riichi_tile_id, player_i_river_start_ind[riichi_player_id] + 6] = 0
 
                 if np.all(curr_all_obs_final == curr_all_obs):
                     print("state observation no problem!")
@@ -761,10 +793,13 @@ for url in paipu_urls:
                 #                         plt.pcolor(curr_all_obs_final[pid])
                 #                         plt.show()
 
-                num_games += 1
 
-                if num_games == 10:
-                    stop
+
+                num_games += 1
+                done = True
+
+                # if num_games == 10:
+                #     stop
 
                 if num_games % 100 == 0:
 
