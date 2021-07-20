@@ -36,7 +36,7 @@ UNICODE_TILES = """
 """.split()
 
 
-def decodem(naru_tile_int, naru_player_id):
+def decodem(naru_tiles_int, naru_player_id):
     # 54279 : 4s0s chi 6s
     # 35849 : 6s pon
     # 51275 : chu pon
@@ -171,7 +171,7 @@ def decodem(naru_tile_int, naru_player_id):
 
                     hand_tiles_removed = []
                     for kk, ss in enumerate(side_tiles_added):
-                        if ss != which_kan:
+                        if kk != which_kan:
                             hand_tiles_removed.append(ss[0])
 
     return side_tiles_added, hand_tiles_removed, naru_is_aka, naru_type
@@ -757,17 +757,17 @@ for url in paipu_urls:
 
                     hand_tiles[agari_player_id] = [int(hai) for hai in child.get("hai").split(",")]
 
-                    if hasattr(child, "m"):
-                        side_tiles_agari_str = child.get("m").split(",")
-                        side_tiles[agari_player_id] = []
-                        for ss in side_tiles_agari_str:
-                            side_tiles_added, _, _, _ = decodem(int(ss), agari_player_id)
-                            side_tiles[agari_player_id].append(side_tiles_added)
+                    # if hasattr(child, "m"):
+                    #     side_tiles_agari_str = child.get("m").split(",")
+                    #     side_tiles[agari_player_id] = []
+                    #     for ss in side_tiles_agari_str:
+                    #         side_tiles_added, _, _, _ = decodem(int(ss), agari_player_id)
+                    #         side_tiles[agari_player_id].append(side_tiles_added)
 
                     # TODO: record state transition
 
                 # Multiple player Agari:
-                if child_no + 1 < len(root) and root[child_no + 1].tag == "AGARI" or root[child_no + 1].tag == "BYE":
+                if child_no + 1 < len(root) and (root[child_no + 1].tag == "AGARI" or root[child_no + 1].tag == "BYE"):
                     continue
 
                 curr_all_obs_final = generate_obs(
