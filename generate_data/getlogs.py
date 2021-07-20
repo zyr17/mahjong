@@ -319,13 +319,17 @@ for filename in filenames:
 
 # -------------- Hyper-parameters ------------------
 
-max_ten_diff = 250  # 最大点数限制，排除点数差距过大时的非正常打法
+max_ten_diff = 200  # 最大点数限制，排除点数差距过大时的非正常打法
 min_dan = 16  # 最低段位限制，可以排除三麻的局（三麻的缺省player的dan=0）
 
 max_aval_action_num = 16
 max_all_steps = 100000
-max_steps = 200
-all_action_num = int(134 + 9)  # Discard, Riichii, Chi, Pon, An-Kan, Min-Kan, Add-Kan, Ron, Tsumo, Push(99)
+
+all_action_num = int(34 + 10)  # Discard, Riichii, Chi, Pon, An-Kan, Min-Kan, Add-Kan, Ron, Tsumo, Push(99), Escape
+# Note that to do riichi, the player first need to discard a card
+
+# TODO: currently only use data of id=0 player?
+# TODO: augmentation by exchanging m,p,s
 
 player_obs_total = np.zeros([max_all_steps, 1, 34, 63], dtype=np.uint8)
 oracle_obs_total = np.zeros([max_all_steps, 1, 34, 18], dtype=np.uint8)
@@ -350,7 +354,7 @@ game_has_init = False
 sum_scores = np.zeros(4, dtype=np.float64)
 oya_scores = np.zeros(1, dtype=np.float64)
 
-machi_hai_freq = np.zeros(136, dtype=np.float64)
+machi_hai_freq = np.zeros(34, dtype=np.float64)
 # ----------------- start ---------------------
 
 for url in paipu_urls:
@@ -466,11 +470,10 @@ for url in paipu_urls:
             scores_str = child.get("ten").split(',')
             scores = [int(tmp) for tmp in scores_str]
 
-            #             if max(scores) - min(scores) > max_ten_diff:
-            #                 record_this_game = False
-            #             else:
-            #                 record_this_game = True
-            #         print(scores)
+            if max(scores) - min(scores) > max_ten_diff:
+                record_this_game = False
+            else:
+                record_this_game = True
 
             # Oya number
             oya_id = int(child.get("oya"))
