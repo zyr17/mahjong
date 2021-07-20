@@ -145,10 +145,7 @@ def decodem(naru_tile_int, naru_player_id):
                 if (kan_tile_id * 4 + which_kan) in aka_tile_ints:
                     naru_is_aka = True
 
-                hand_tiles_removed = []
-                for kk, ss in enumerate(side_tiles_added):
-                    if kk != which_kan:
-                        hand_tiles_removed.append(ss[0])
+                hand_tiles_removed = [kan_tile_id * 4 + which_kan]
 
             else:  # An-Kan or Min-Kan
 
@@ -572,7 +569,7 @@ for url in paipu_urls:
                     curr_all_obs[player_id, obtained_tile_id, player_i_hand_start_ind[player_id] + 5] = 1
 
                 hand_num_tile = np.sum(curr_all_obs[player_id, obtained_tile_id,
-                                           player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
+                                       player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
                 if hand_num_tile < 0 or hand_num_tile > 3:
                     raise ValueError
                 curr_all_obs[player_id, obtained_tile_id, player_i_hand_start_ind[player_id] + hand_num_tile] = 1
@@ -701,7 +698,7 @@ for url in paipu_urls:
 
             elif child.tag == "BYE":  # 掉线
                 record_this_game = False
-                continue
+                break
 
             elif child.tag == "RYUUKYOKU" or child.tag == "AGARI":
 
@@ -748,12 +745,25 @@ for url in paipu_urls:
                         hand_num_tile = np.sum(curr_all_obs[agari_player_id, agari_tile_id,
                                                             player_i_hand_start_ind[agari_player_id]:player_i_hand_start_ind[agari_player_id] + 4])
                         curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[agari_player_id] + hand_num_tile] = 1
+
+                    if agari_tile in aka_tile_ints:
+                        curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[agari_player_id] + 5] = 1
+
+                    # hand_tiles[agari_player_id].append(agari_tile)
                     # can choose to agari or not
                     # TODO: consider tsumo
 
                     # ---------------- update game states ----------------------
-                    # hand_tiles[agari_player_id].append(agari_tile)
+
                     hand_tiles[agari_player_id] = [int(hai) for hai in child.get("hai").split(",")]
+
+                    if hasattr(child, "m"):
+                        side_tiles_agari_str = child.get("m").split(",")
+                        side_tiles[agari_player_id] = []
+                        for ss in side_tiles_agari_str:
+                            side_tiles_added, _, _, _ = decodem(int(ss), agari_player_id)
+                            side_tiles[agari_player_id].append(side_tiles_added)
+
                     # TODO: record state transition
 
                 # Multiple player Agari:
