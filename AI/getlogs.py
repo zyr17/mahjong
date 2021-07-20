@@ -42,7 +42,7 @@ def decodem(naru_tile_int, naru_player_id):
     # ---------------------------------
     binaries = bin(naru_tiles_int)[2:]
 
-    has_aka = False
+    naru_is_aka = False
 
     if len(binaries) < 16:
         binaries = "0" * (16 - len(binaries)) + binaries
@@ -52,7 +52,7 @@ def decodem(naru_tile_int, naru_player_id):
     bit4 = int(binaries[-5], 2)
 
     if bit2:
-        #         print("Chi")
+        naru_type = "Chi"
 
         bit0_1 = int(binaries[-2:], 2)
 
@@ -81,11 +81,16 @@ def decodem(naru_tile_int, naru_player_id):
         # TODO: check aka!
         side_tiles_added[which_naru][1] = 1
 
+        hand_tiles_removed = []
+        for kk, ss in enumerate(side_tiles_added):
+            if kk != which_naru:
+                hand_tiles_removed.append(ss[0])
+
         if side_tiles_added[which_naru][0] in aka_tile_ints:
             print("Chi Aka!!!")
             print(bit3_4, bit5_6, bit7_8)
 
-            has_aka = True
+            naru_is_aka = True
 
             print(UNICODE_TILES[start_tile_id], UNICODE_TILES[start_tile_id + 1], UNICODE_TILES[start_tile_id + 2])
             print(UNICODE_TILES[start_tile_id + which_naru])
@@ -93,6 +98,8 @@ def decodem(naru_tile_int, naru_player_id):
         ##### To judge aka, trace previous discarded tile !
 
     else:
+        naru_type = "Pon"
+
         if bit3:
 
             bit9_15 = int(binaries[:7], 2)
@@ -112,21 +119,35 @@ def decodem(naru_tile_int, naru_player_id):
 
             if side_tiles_added[which_naru][0] in [16, 16 + 36, 16 + 36 + 36]:
                 print("Pon, Aka!!!")
-                has_aka = True
+                naru_is_aka = True
                 print(UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id], UNICODE_TILES[pon_tile_id])
 
-        else:
+            hand_tiles_removed = []
+            for kk, ss in enumerate(side_tiles_added):
+                if kk != which_naru:
+                    hand_tiles_removed.append(ss[0])
+
+        else:  # An-Kan, Min-Kan, Add-Kan
+            naru_type = "Kan"
 
             bit5_6 = int(binaries[-7:-5], 2)
             which_kan = bit5_6
 
             if bit4:
-                #                 print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
+                #  print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
                 bit9_15 = int(binaries[:7], 2)
 
                 kan_tile_id = int(bit9_15 / 3)
 
                 side_tiles_added = [[kan_tile_id * 4 + which_kan, 1]]
+
+                if (kan_tile_id * 4 + which_kan) in aka_tile_ints:
+                    naru_is_aka = True
+
+                hand_tiles_removed = []
+                for kk, ss in enumerate(side_tiles_added):
+                    if kk != which_kan:
+                        hand_tiles_removed.append(ss[0])
 
             else:  # An-Kan or # Min-Kan
 
@@ -137,25 +158,23 @@ def decodem(naru_tile_int, naru_player_id):
                 kan_tile = bit8_15
                 kan_tile_id = int(kan_tile / 4)
 
-                if kan_tile_id in [4, 13, 22]:
-                    print("Kan Aka !!!")
-                    has_aka = True
-                    print(UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id], UNICODE_TILES[kan_tile_id],
-                          UNICODE_TILES[kan_tile_id])
-
                 side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
                                     [kan_tile_id * 4 + 3, 0]]
-
                 if which_naru == 0:
                     # print("An-Kan")
-                    pass
+                    hand_tiles_removed = []
+                    for kk, ss in enumerate(side_tiles_added):
+                        hand_tiles_removed.append(ss[0])
                 else:
                     # print("Min-Kan")
                     side_tiles_added[which_kan][1] = 1
 
-    hand_tiles_removed = 0
+                    hand_tiles_removed = []
+                    for kk, ss in enumerate(side_tiles_added):
+                        if kk != which_kan:
+                            hand_tiles_removed.append(ss[0])
 
-    return side_tiles_added, hand_tiles_removed, has_aka
+    return side_tiles_added, hand_tiles_removed, naru_is_aka, naru_type
 
 
 def dora2indicator(dora_id):
@@ -214,6 +233,9 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
         river_tile_num = np.zeros(34, dtype=np.uint8)
         for river_tile in player_river_tiles:
             river_tile_id = int(river_tile[0] / 4)
+
+            all_obs[player_id, river_tile_id, player_i_hand_start_ind[player_id] + 4] = 1
+
             river_tile_num[river_tile_id] += 1
 
             if river_tile[0] in aka_tile_ints:
@@ -304,16 +326,18 @@ for filename in filenames:
 # -------------- Hyper-parameters ------------------
 
 max_ten_diff = 250  # 最大点数限制，排除点数差距过大时的非正常打法
-min_dan = 15  # 最低段位限制，可以排除三麻的局（三麻的缺省player的dan=0）
+min_dan = 16  # 最低段位限制，可以排除三麻的局（三麻的缺省player的dan=0）
 
 max_aval_action_num = 16
 max_all_steps = 100000
 max_steps = 200
 
-player_obs_total = np.zeros([max_all_steps, 1, 34, 40], dtype=np.uint8)
-oracle_obs_total = np.zeros([max_all_steps, 1, 34, 15], dtype=np.uint8)
-player_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 40], dtype=np.uint8)
-oracle_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 15], dtype=np.uint8)
+player_obs_total = np.zeros([max_all_steps, 1, 34, 63], dtype=np.uint8)
+oracle_obs_total = np.zeros([max_all_steps, 1, 34, 18], dtype=np.uint8)
+player_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 63], dtype=np.uint8)
+oracle_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 18], dtype=np.uint8)
+int_actions_total = np.zeros([max_all_steps], dtype=np.uint8)
+valid_init_actions_total = np.zeros([max_all_steps], dtype=np.uint8)
 aval_actions_num_total = np.zeros([max_all_steps], dtype=np.uint8)
 
 done_total = np.zeros([max_all_steps], dtype=np.float32)
@@ -375,15 +399,34 @@ for url in paipu_urls:
 
             game_info = dict()
             game_info["is_pvp"] = int(tmp[-1])
+            if not game_info["is_pvp"]:
+                break
+
             game_info["no_aka"] = int(tmp[-2])
+            if game_info["no_aka"]:
+                break
+
             game_info["no_kuutan"] = int(tmp[-3])
+            if game_info["no_kuutan"]:
+                break
+
             game_info["is_hansou"] = int(tmp[-4])
+            # no requirement
+
             game_info["is_3ma"] = int(tmp[-5])
-            #             if game_info["is_3ma"]:
-            #                 print("!!!!!!! Is 3 Ma !!!!!!!!!!!!!!!!")
+            if game_info["is_3ma"]:
+                break
+
             game_info["is_pro"] = int(tmp[-6])
+            # no requirement
+
             game_info["is_fast"] = int(tmp[-7])
+            if game_info["is_fast"]:
+                break
+
             game_info["is_joukyu"] = int(tmp[-8])
+            if game_info["is_joukyu"]:
+                break
 
             # 0x01	如果是PVP对战则为1
             # 0x02	如果没有赤宝牌则为1
@@ -410,9 +453,12 @@ for url in paipu_urls:
             record_this_game = True
 
             scores_change_this_game = np.zeros([4])
-            #         print(child.attrib)
 
-            #         print("------------------------------------")
+            players_episode_all_obs = [[], [], [], []]
+
+            # print(child.attrib)
+
+            # print("------------------------------------")
             # player_obs = np.zeros([4, max_steps, 1, 34, 60], dtype=np.uint8)
             # oracle_obs = np.zeros([4, max_steps, 1, 34, 15], dtype=np.uint8)
             # player_actions = np.zeros([4, max_steps, max_aval_action_num, 1, 34, 60], dtype=np.uint8)
@@ -450,13 +496,12 @@ for url in paipu_urls:
                 hand_tiles.append(hand_tiles_player)
 
             river_tiles = [[], [], [], []]  # each has 3 elements: tile_no, is_from_hand and riichi_announce_tile
-            side_tiles = [[], []]  # each has 2 elements: tile_no and is_naru_tile
+            side_tiles = [[], [], [], []]  # each has 2 elements: tile_no and is_naru_tile
 
             # ----------------------- Generate initial player and oracle observaTION  ----------------
 
             curr_all_obs = generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs, self_wind_obs)
 
-            just_riichi = False
             game_has_init = True
 
         # ------------------------- Actions ---------------------------
@@ -471,13 +516,20 @@ for url in paipu_urls:
                 continue
 
             if child.tag == "DORA":
+                # --------------- update game states -------------
                 dora_tiles.append(int(child.get("hai")))
+
+                # --------------- Update observations --------------
                 new_dora_hai_id = int(int(child.get("hai")) / 4)
                 curr_all_obs[:, new_dora_hai_id, dora_ind] += 1
                 new_dora_indicator_id = dora2indicator(new_dora_hai_id)
                 curr_all_obs[:, new_dora_indicator_id, dora_indicator_ind] += 1
 
+                # TODO: update in Kan
+
             elif child.tag == "REACH":
+
+                # ---------------- Record statistics ------------
                 if int(child.get("step")) == 2:
                     player_id = int(child.get("who"))
                     sum_scores[player_id] -= 10
@@ -485,8 +537,15 @@ for url in paipu_urls:
                     if oya_id == player_id:
                         oya_scores -= 10
 
-                # if int(child.get("step")) == 1:
-                #     riichi_tile = int(root[child_no + 1].tag[1:])
+                    # --------------- update game states -------------
+                    # Not updating states here, but during dicarding tile stage
+
+                    # --------------- Update observations --------------
+                    # Not updating states here, but during dicarding tile stage
+
+                # ---------- TODO: compute next aval obs ----------
+                if int(child.get("step")) == 1:
+                    pass
 
             elif child.tag[0] in ["T", "U", "V", "W"] and child.attrib == {}:  # 摸牌
                 if child.tag[0] == "T":
@@ -500,7 +559,23 @@ for url in paipu_urls:
                 else:
                     raise ValueError
 
+                # --------------- update game states -------------
+                obtained_tile = int(child.tag[1:])
+                obtained_tile_id = int(obtained_tile / 4)
+
                 hand_tiles[player_id].append(int(child.tag[1:]))
+
+                # --------------- update game  observations -------------
+                if obtained_tile in aka_tile_ints:
+                    curr_all_obs[player_id, obtained_tile_id, player_i_hand_start_ind[player_id] + 5] = 1
+
+                hand_num_tile = np.sum(curr_all_obs[player_id, obtained_tile_id,
+                                           player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
+                if hand_num_tile < 0 or hand_num_tile > 3:
+                    raise ValueError
+                curr_all_obs[player_id, obtained_tile_id, player_i_hand_start_ind[player_id] + hand_num_tile] = 1
+
+                # TODO: state-transition record?
 
             elif child.tag[0] in ["D", "E", "F", "G"] and child.attrib == {}:  # 打牌
 
@@ -515,48 +590,107 @@ for url in paipu_urls:
                 else:
                     raise ValueError
 
+                # --------------- update game states  -------------
                 discard_tile = int(child.tag[1:])
                 discard_tile_id = int(discard_tile / 4)
 
-                if discard_tile in aka_tile_ints:
-                    curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
-                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 5] = 1
+                if root[child_no + 1].tag == "REACH" and root[child_no + 1].get("step") == '2':
+                    if not (root[child_no - 1].tag == "REACH" and root[child_no - 1].get("step") == '1'):
+                        raise ValueError("Some problems!!!")
 
-                if child.tag[1:] != root[child_no - 1].tag[1:]:  # from hand (te kiri)
-                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += 1
-                    is_from_hand = 1
-                else:
-                    is_from_hand = 0
-
-                if root[child_no - 1].tag == "REACH" and root[child_no - 1].get("step") == 1:
-                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = 1
+                if root[child_no - 1].tag == "REACH" and root[child_no - 1].get("step") == '1':  # TODO: is this OK?
                     is_riichi_announcement_tile = 1
                 else:
                     is_riichi_announcement_tile = 0
 
+                if child.tag[1:] != root[child_no - 1 - is_riichi_announcement_tile].tag[1:]:  # from hand (te kiri)
+                    is_from_hand = 1
+                else:
+                    is_from_hand = 0
+
                 river_tiles[player_id].append([discard_tile, is_from_hand, is_riichi_announcement_tile])
+                hand_tiles[player_id].remove(discard_tile)
+                # --------------- update observations -------------
+
+                if discard_tile in aka_tile_ints:
+                    curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
+                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 5] = 1
+                if is_from_hand:
+                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += 1
+                if is_riichi_announcement_tile:
+                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = 1
+
+                river_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id,
+                                        player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
+
+                if river_num_tile < 0 or river_num_tile > 3:
+                    raise ValueError
+                curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + river_num_tile] = 1
+
+                # if discard, change hand tile obs:
+                curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 4] = 1
+
+                hand_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
+                if hand_num_tile < 1 or hand_num_tile > 4:
+                    raise ValueError
+
+                curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + hand_num_tile - 1] = 0
 
             elif child.tag == "N":  # 鸣牌
                 naru_player_id = int(child.get("who"))
-
+                player_id = naru_player_id
                 naru_tiles_int = int(child.get("m"))
 
-                #                 print("==========  Naru =================")
-                side_tiles_added_by_naru, hand_tiles_removed_by_naru, has_aka = decodem(naru_tiles_int, naru_player_id)
-
-                #                 print("------------ check --------")
+                # print("==========  Naru =================")
+                side_tiles_added_by_naru, hand_tiles_removed_by_naru, naru_is_aka, naru_type = decodem(
+                    naru_tiles_int, naru_player_id)
 
                 if int(root[child_no - 1].tag == "REACH"):
                     trace_back_steps = 2
                 else:
                     trace_back_steps = 1
 
+                # --------------- update game states  -------------
+                side_tiles[player_id] = side_tiles[player_id] + side_tiles_added_by_naru
+
+                for hh in hand_tiles_removed_by_naru:
+                    hand_tiles[player_id].remove(hh)
+                # TODO: Kan might have error
+
+                # --------------- update observations -------------
+
+                for side_tile in side_tiles_added_by_naru:
+                    side_tile_id = int(side_tile[0] / 4)
+                    side_num_tile = np.sum(curr_all_obs[player_id, side_tile_id,
+                                           player_i_side_start_ind[player_id]:player_i_side_start_ind[player_id] + 4])
+                    if side_num_tile < 0 or side_num_tile > 3:
+                        raise ValueError
+
+                    curr_all_obs[player_id, side_tile_id, player_i_side_start_ind[player_id] + side_num_tile] = 1
+
+                    if side_tile[0] in aka_tile_ints:
+                        curr_all_obs[player_id, side_tile_id, player_i_side_start_ind[player_id] + 5] = 1
+
+                for hand_tile in hand_tiles_removed_by_naru:
+                    hand_tile_id = int(hand_tile / 4)
+                    hand_num_tile = np.sum(curr_all_obs[player_id, hand_tile_id,
+                                           player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
+
+                    if hand_num_tile < 1 or hand_num_tile > 4:
+                        raise ValueError
+
+                    curr_all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + hand_num_tile - 1] = 0
+
+                    if naru_type == "Kan" or (hand_tile in aka_tile_ints):
+                        curr_all_obs[player_id, hand_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
+
+                # ------------ check --------
                 # if int(root[child_no - trace_back_steps].tag[1:]) in aka_tile_ints:
-                if has_aka:
-                    print(root[child_no - trace_back_steps].tag)
-                    print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
-                    print("This naru contains Aka !!")
-                    print("==========  Naru =================")
+                # if naru_is_aka:
+                #     print(root[child_no - trace_back_steps].tag)
+                #     print("narued tile is", UNICODE_TILES[int(int(root[child_no - trace_back_steps].tag[1:]) / 4)])
+                #     print("This naru contains Aka !!")
+                #     print("==========  Naru =================")
                 # add into side tiles
 
                 # remove from hand tiles
@@ -599,10 +733,16 @@ for url in paipu_urls:
                         print(owari_scores_change)
 
                 num_games += 1
+
+                if num_games == 1:
+                    exit(1)
+
                 if num_games % 100 == 0:
+
                     print(num_games)
                     print("avg_scores:", sum_scores / num_games)
-                    print("avg_oya_scores:", oya_scores / num_games)
+
+                    # print("avg_oya_scores:", oya_scores / num_games)
                     # print("machi hai frequency:", machi_hai_freq / num_games)
 
                 if child_no + 1 < len(root) and root[child_no + 1].tag == "AGARI":
