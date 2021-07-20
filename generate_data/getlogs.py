@@ -135,7 +135,7 @@ def decodem(naru_tiles_int, naru_player_id):
             which_kan = bit5_6
 
             if bit4:
-                #  print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
+                print("Add-Kan")  # TODO: Add-Kan Only change 1 tile
                 bit9_15 = int(binaries[:7], 2)
 
                 kan_tile_id = int(bit9_15 / 3)
@@ -147,7 +147,7 @@ def decodem(naru_tiles_int, naru_player_id):
 
                 hand_tiles_removed = [kan_tile_id * 4 + which_kan]
 
-            else:  # An-Kan or Min-Kan
+            else:  # An-Kan or # Min-Kan
 
                 which_naru = naru_tiles_int % 4
 
@@ -155,18 +155,17 @@ def decodem(naru_tiles_int, naru_player_id):
 
                 kan_tile = bit8_15
                 kan_tile_id = int(kan_tile / 4)
-
                 which_kan = kan_tile % 4
 
                 side_tiles_added = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0], [kan_tile_id * 4 + 2, 0],
                                     [kan_tile_id * 4 + 3, 0]]
                 if which_naru == 0:
-                    # print("An-Kan")
+                    print("An-Kan")
                     hand_tiles_removed = []
                     for kk, ss in enumerate(side_tiles_added):
                         hand_tiles_removed.append(ss[0])
                 else:
-                    # print("Min-Kan")
+                    print("Min-Kan")
                     side_tiles_added[which_kan][1] = 1
 
                     hand_tiles_removed = []
@@ -326,13 +325,14 @@ min_dan = 16  # 最低段位限制，可以排除三麻的局（三麻的缺省p
 max_aval_action_num = 16
 max_all_steps = 100000
 max_steps = 200
+all_action_num = int(134 + 9)  # Discard, Riichii, Chi, Pon, An-Kan, Min-Kan, Add-Kan, Ron, Tsumo, Push(99)
 
 player_obs_total = np.zeros([max_all_steps, 1, 34, 63], dtype=np.uint8)
 oracle_obs_total = np.zeros([max_all_steps, 1, 34, 18], dtype=np.uint8)
 player_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 63], dtype=np.uint8)
 oracle_actions_total = np.zeros([max_all_steps, max_aval_action_num, 1, 34, 18], dtype=np.uint8)
 int_actions_total = np.zeros([max_all_steps], dtype=np.uint8)
-valid_init_actions_total = np.zeros([max_all_steps], dtype=np.uint8)
+valid_init_actions_total = np.zeros([max_all_steps, all_action_num], dtype=np.uint8)
 aval_actions_num_total = np.zeros([max_all_steps], dtype=np.uint8)
 
 done_total = np.zeros([max_all_steps], dtype=np.float32)
@@ -379,8 +379,6 @@ for url in paipu_urls:
     root = ET.fromstring(paipu)
 
     # =================== 开始解析牌谱 =======================
-
-    print("=================== 开始解析牌谱 =======================")
 
     record_this_game = True
 
@@ -614,9 +612,10 @@ for url in paipu_urls:
                 if discard_tile in aka_tile_ints:
                     curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 5] = 0
                     curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 5] = 1
-
-                curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += is_from_hand
-                curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = is_riichi_announcement_tile
+                if is_from_hand:
+                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 4] += 1
+                if is_riichi_announcement_tile:
+                    curr_all_obs[player_id, discard_tile_id, player_i_river_start_ind[player_id] + 6] = 1
 
                 river_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id,
                                         player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])
@@ -628,7 +627,8 @@ for url in paipu_urls:
                 # if discard, change hand tile obs:
                 curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id] + 4] = 1
 
-                hand_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id, player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
+                hand_num_tile = np.sum(curr_all_obs[player_id, discard_tile_id,
+                                       player_i_hand_start_ind[player_id]:player_i_hand_start_ind[player_id] + 4])
                 if hand_num_tile < 1 or hand_num_tile > 4:
                     raise ValueError
 
@@ -643,7 +643,8 @@ for url in paipu_urls:
                 side_tiles_added_by_naru, hand_tiles_removed_by_naru, naru_is_aka, naru_type = decodem(
                     naru_tiles_int, naru_player_id)
 
-                # print("This game has ", naru_type)
+                # if naru_type == "Kan":
+                #     print("This game has ", naru_type)
 
                 if int(root[child_no - 1].tag == "REACH"):
                     trace_back_steps = 2
@@ -704,33 +705,33 @@ for url in paipu_urls:
 
                 # ------------------- Statistics -------------------------
 
-                # scores_change_str = child.get("sc").split(",")
-                # scores_change = [int(tmp) for tmp in scores_change_str]
-                # rewards = scores_change[1::2]
-                #
-                # oya_scores += rewards[oya_id]
-                #
-                # if child.tag == "AGARI":
-                #     # double-ron
-                #     if len(child.get("who")) > 1:
-                #         for c in root:
-                #             print(c.tag, c.attrib)
-                #         raise ValueError("from who is not single player!!!")
-                #
-                #     machi_hai_str = child.get("machi").split(",")
-                #     machi_hai = np.array([int(tmp) for tmp in machi_hai_str]).astype(np.int)
-                #
-                #     machi_hai_freq[machi_hai] += 1
-                #
-                # for player_id in range(4):
-                #     sum_scores[player_id] += rewards[player_id]
-                #     scores_change_this_game[player_id] += rewards[player_id]
-                #
-                # if "owari" in child.attrib:
-                #     owari_scores_change_str = child.get("sc").split(",")
-                #     owari_scores_change = [int(tmp) for tmp in owari_scores_change_str]
-                #     if np.sum(owari_scores_change) > 1000:
-                #         print(owari_scores_change)
+                scores_change_str = child.get("sc").split(",")
+                scores_change = [int(tmp) for tmp in scores_change_str]
+                rewards = scores_change[1::2]
+
+                oya_scores += rewards[oya_id]
+
+                if child.tag == "AGARI":
+                    # double-ron
+                    if len(child.get("fromWho")) > 1:
+                        for c in root:
+                            print(c.tag, c.attrib)
+                        raise ValueError("from who is not single player!!!")
+
+                    machi_hai_str = child.get("machi").split(",")
+                    machi_hai = np.array([int(tmp) for tmp in machi_hai_str]).astype(np.int)
+
+                    machi_hai_freq[machi_hai] += 1
+
+                for player_id in range(4):
+                    sum_scores[player_id] += rewards[player_id]
+                    scores_change_this_game[player_id] += rewards[player_id]
+
+                if "owari" in child.attrib:
+                    owari_scores_change_str = child.get("sc").split(",")
+                    owari_scores_change = [int(tmp) for tmp in owari_scores_change_str]
+                    if np.sum(owari_scores_change) > 1000:
+                        print(owari_scores_change)
 
                 # ---------------------- Check observation generation ---------------
 
@@ -743,13 +744,16 @@ for url in paipu_urls:
 
                     if child.get("who") != child.get("fromWho"):  # not tsumo
                         hand_num_tile = np.sum(curr_all_obs[agari_player_id, agari_tile_id,
-                                                            player_i_hand_start_ind[agari_player_id]:player_i_hand_start_ind[agari_player_id] + 4])
-                        curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[agari_player_id] + hand_num_tile] = 1
+                                               player_i_hand_start_ind[agari_player_id]:player_i_hand_start_ind[
+                                                                                            agari_player_id] + 4])
+                        curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[
+                            agari_player_id] + hand_num_tile] = 1
+
+                    #                         hand_tiles[agari_player_id].append(agari_tile)
 
                     if agari_tile in aka_tile_ints:
                         curr_all_obs[agari_player_id, agari_tile_id, player_i_hand_start_ind[agari_player_id] + 5] = 1
 
-                    # hand_tiles[agari_player_id].append(agari_tile)
                     # can choose to agari or not
                     # TODO: consider tsumo
 
@@ -757,21 +761,40 @@ for url in paipu_urls:
 
                     hand_tiles[agari_player_id] = [int(hai) for hai in child.get("hai").split(",")]
 
-                    # if hasattr(child, "m"):
-                    #     side_tiles_agari_str = child.get("m").split(",")
-                    #     side_tiles[agari_player_id] = []
-                    #     for ss in side_tiles_agari_str:
-                    #         side_tiles_added, _, _, _ = decodem(int(ss), agari_player_id)
-                    #         side_tiles[agari_player_id].append(side_tiles_added)
+                    if child.get("m") is not None:
+                        side_tiles_agari_str = child.get("m").split(",")
 
+                        final_side_tiles = []
+                        for ss in side_tiles_agari_str:
+                            side_tiles_added, _, _, naru_tp = decodem(int(ss), agari_player_id)
+                            if len(side_tiles_added) == 1:  # Add-Kan
+                                final_side_tiles.append(int(side_tiles_added[0][0] / 4) * 4)
+                                final_side_tiles.append(int(side_tiles_added[0][0] / 4) * 4 + 1)
+                                final_side_tiles.append(int(side_tiles_added[0][0] / 4) * 4 + 2)
+                                final_side_tiles.append(int(side_tiles_added[0][0] / 4) * 4 + 3)
+                            else:
+                                for sss in side_tiles_added:
+                                    final_side_tiles.append(sss[0])
+
+                        process_side_tiles = []
+                        for sss in side_tiles[agari_player_id]:
+                            process_side_tiles.append(sss[0])
+                        if not np.all(np.sort(np.array(process_side_tiles)) == np.sort(np.array(final_side_tiles))):
+                            print("--------------- Side tiles has problems -------------")
+
+                            print("process_side_tiles: ", np.sort(np.array(process_side_tiles)))
+                            print("final_side_tiles  : ", np.sort(np.array(final_side_tiles)))
+                            for ii in range(max(0, child_no + 1 - 100), child_no + 1):
+                                print(root[ii].tag, root[ii].attrib)
+                            print("-----------------------------------------------------")
                     # TODO: record state transition
 
                 # Multiple player Agari:
                 if child_no + 1 < len(root) and (root[child_no + 1].tag == "AGARI" or root[child_no + 1].tag == "BYE"):
                     continue
 
-                curr_all_obs_final = generate_obs(
-                    hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs, self_wind_obs)
+                curr_all_obs_final = generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind_obs,
+                                                  self_wind_obs)
 
                 if root[child_no - 2].tag == "REACH" and root[child_no - 2].get("step") == '1':  # Riichi Tile Ron
                     riichi_tile = int(root[child_no - 1].tag[1:])
@@ -779,11 +802,12 @@ for url in paipu_urls:
                     riichi_tile_id = int(riichi_tile / 4)
                     curr_all_obs[riichi_player_id, riichi_tile_id, player_i_river_start_ind[riichi_player_id] + 6] = 0
 
-                    curr_all_obs_final[riichi_player_id, riichi_tile_id, player_i_river_start_ind[riichi_player_id] + 6] = 0
+                    curr_all_obs_final[
+                        riichi_player_id, riichi_tile_id, player_i_river_start_ind[riichi_player_id] + 6] = 0
 
                 if np.all(curr_all_obs_final == curr_all_obs):
-                    print("state observation no problem!")
-
+                    #                     print("state observation no problem!")
+                    pass
                 else:
                     print("------------------------------------------------------")
                     for pid in range(4):
@@ -794,7 +818,10 @@ for url in paipu_urls:
                                     print("Inconsistency: Tile ID {}, feature index {}".format(i, j))
                                     print("Processed One is {}, Finally Generated One is {}".format(
                                         curr_all_obs[pid, i, j], curr_all_obs_final[pid, i, j]))
+                    for ii in range(max(0, child_no + 1 - 100), child_no + 1):
+                        print(root[ii].tag, root[ii].attrib)
 
+                    print("-----------------------")
                 #                     for pid in range(4):
                 #                         plt.subplot(1, 2, 1)
                 #                         plt.pcolor(curr_all_obs[pid])
@@ -803,16 +830,13 @@ for url in paipu_urls:
                 #                         plt.pcolor(curr_all_obs_final[pid])
                 #                         plt.show()
 
-
-
                 num_games += 1
                 done = True
 
-                # if num_games == 10:
+                # if num_games == 10000:
                 #     stop
 
                 if num_games % 100 == 0:
-
                     print(num_games)
                     print("avg_scores:", sum_scores / num_games)
 
