@@ -1,4 +1,5 @@
 import platform
+import warnings
 
 import numpy as np
 from copy import deepcopy
@@ -767,6 +768,7 @@ class EnvMahjong3(gym.Env):
 
         # ------------- if can win, just win -----------
         if can_win:
+            warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             if self.t.get_selected_action_tile().red_dora:
                 ron_tile = int(self.t.get_selected_action_tile().tile) * 4
