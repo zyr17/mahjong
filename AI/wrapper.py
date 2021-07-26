@@ -86,8 +86,12 @@ def is_consecutive(a: int, b: int, c: int):
     return array[1] - array[0] == 1 and array[2] - array[1] == 1
 
 
-def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None):
+def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
+
     all_obs_0p = np.zeros([34, 63 + 18], dtype=np.uint8)
+
+    if prev_step_is_naru:
+        latest_tile = None
 
     global player_i_hand_start_ind
     global player_i_side_start_ind
@@ -282,6 +286,7 @@ class EnvMahjong3(gym.Env):
 
         self.is_deciding_riichi = False
         self.can_riichi = False
+        self.prev_step_is_naru = False
         self.riichi_tile_id = -1
         self.curr_valid_actions = []
         self.non_valid_discard_tiles_id = [[], [], [], []]
@@ -299,6 +304,7 @@ class EnvMahjong3(gym.Env):
             aval_actions = self.t.get_self_actions()
             if self.is_deciding_riichi:
                 self.curr_valid_actions += [RIICHI, NOOP]
+
             else:
                 for act in aval_actions:
                     if act.action == mp.Action.Play:
@@ -449,13 +455,23 @@ class EnvMahjong3(gym.Env):
 
         self.curr_all_obs[player_id] = generate_obs(
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
-            self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile)
+            self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
+            prev_step_is_naru=self.prev_step_is_naru)
 
         return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
 
     def get_full_obs(self, player_id):
 
         self.update_hand_and_latest_tiles()
+
+        # TODO: each player curr_all_obs
+        player_wind_obs = np.zeros([34])
+        player_wind_obs[27 + (8 - self.oya_id - player_id) % 4] = 1
+
+        self.curr_all_obs[player_id] = generate_obs(
+            self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
+            self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
+            prev_step_is_naru=self.prev_step_is_naru)
 
         return self.curr_all_obs[player_id].swapaxes(0, 1)
 
@@ -520,14 +536,16 @@ class EnvMahjong3(gym.Env):
         aval_actions = self.t.get_self_actions()
 
         self.can_riichi = False
+        self.can_riichi_tiles_id = []
         for act in aval_actions:
             if act.action == mp.Action.Riichi:
                 self.can_riichi = True
-                break
+                self.can_riichi_tiles_id.append(int(act.correspond_tiles[0].tile))
 
-        if self.can_riichi and action < 34 and (not self.is_deciding_riichi):
-            self.is_deciding_riichi = True
+        if self.can_riichi and action < 34 and (not self.is_deciding_riichi) and (action in self.can_riichi_tiles_id):
             self.riichi_tile_id = action
+            self.is_deciding_riichi = True
+
             reward = 0
             done = 0
 
@@ -574,7 +592,7 @@ class EnvMahjong3(gym.Env):
                         is_from_hand = 0
                 elif action == ANKAN:
                     desired_action_tile_id = None  # TODO: There is some simplification
-                    desired_action_type = mp.Action.AnKan
+                    desired_action_type = mp.Action.Ankan
                 elif action == ADDKAN:
                     desired_action_tile_id = None  # TODO: There is some simplification
                     desired_action_type = mp.Action.Kakan
@@ -608,7 +626,7 @@ class EnvMahjong3(gym.Env):
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
                 else:
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
-                print("played a tile!!!!", self.latest_tile)
+                # print("played a tile!!!!", self.latest_tile)
 
             if self.Phases[self.t.get_phase()] == "GAME_OVER":
                 reward = self.get_final_score_change()[playerNo] / self.reward_unit
@@ -678,7 +696,7 @@ class EnvMahjong3(gym.Env):
                 for hh in hand_tiles_removed_by_naru:
                     self.hand_tiles[playerNo].remove(hh)
 
-                self.latest_tile = None
+                self.prev_step_is_naru = True
 
             elif action == ANKAN:
                 # --------------- update game states  -------------
@@ -697,7 +715,7 @@ class EnvMahjong3(gym.Env):
                 for hh in hand_tiles_removed_by_naru:
                     self.hand_tiles[playerNo].remove(hh)
 
-                self.latest_tile = None
+                self.prev_step_is_naru = True
                 # TODO: After Naru, latest_tile = None!!!
             else:
                 raise ValueError
@@ -813,14 +831,14 @@ class EnvMahjong3(gym.Env):
                                             [TileTo136(aval_response_actions[response_action_no].correspond_tiles[1]), 0],
                                             [pon_tile, 1]]
                 self.side_tiles[playerNo] += side_tiles_added_by_naru
-                self.latest_tile = None
+                self.prev_step_is_naru = True
 
             elif action == MINKAN:
                 kan_tile_id = int(aval_response_actions[response_action_no].correspond_tiles[0].tile)
                 side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
                                             [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
                 self.side_tiles[playerNo] += side_tiles_added_by_naru
-                self.latest_tile = None
+                self.prev_step_is_naru = True
 
             elif action in [CHILEFT, CHIMIDDLE, CHIRIGHT]:
 
@@ -837,7 +855,7 @@ class EnvMahjong3(gym.Env):
                     assert chi_no_problem is True
 
                 self.side_tiles[playerNo] += side_tiles_added_by_naru
-                self.latest_tile = None
+                self.prev_step_is_naru = True
 
             elif action == NOOP:
                 pass
