@@ -551,7 +551,7 @@ class EnvMahjong3(gym.Env):
 
             # ------ update state -------
 
-            if self.riichi_tile_id == int(self.latest_tile / 4):
+            if self.riichi_tile_id == int(self.hand_tiles[playerNo][-1] / 4):
                 is_from_hand = 1
             else:
                 is_from_hand = 0
@@ -586,7 +586,7 @@ class EnvMahjong3(gym.Env):
                 if action < 34:
                     desired_action_type = mp.Action.Play
                     desired_action_tile_id = action
-                    if self.latest_tile is not None and action != int(self.latest_tile / 4):
+                    if action != int(self.hand_tiles[playerNo][-1] / 4):
                         is_from_hand = 1
                     else:
                         is_from_hand = 0
@@ -602,19 +602,35 @@ class EnvMahjong3(gym.Env):
                 elif action == PUSH:
                     desired_action_type = mp.Action.KyuShuKyuHai
                     desired_action_tile_id = None
+                elif action == NOOP:
+                    desired_action_type = mp.Action.Play
+                    desired_action_tile_id = self.riichi_tile_id
+                    action = self.riichi_tile_id
+                    if action != int(self.hand_tiles[playerNo][-1] / 4):
+                        is_from_hand = 1
+                    else:
+                        is_from_hand = 0
                 else:
+                    print(action)
                     raise ValueError
 
             action_no = 0
             has_valid_action = False
             for act in aval_actions:
                 if act.action == desired_action_type and \
-                        (int(act.correspond_tiles[0].tile) == action or desired_action_tile_id is None):
+                        (desired_action_tile_id is None or int(act.correspond_tiles[0].tile) == action):
                     has_valid_action = True
-                    desired_action_tile_id = int(act.correspond_tiles[0].tile)
+
+                    if  desired_action_type in [mp.Action.Ankan, mp.Action.Kakan]:
+                        desired_action_tile_id = int(act.correspond_tiles[0].tile)
+
                     break
                 action_no += 1
 
+            if not has_valid_action:
+                print(desired_action_tile_id)
+                print(act.action)
+                print(desired_action_type)
             assert has_valid_action is True
 
             self.t.make_selection(action_no)
