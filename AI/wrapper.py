@@ -618,11 +618,11 @@ class EnvMahjong3(gym.Env):
             has_valid_action = False
             for act in aval_actions:
                 if act.action == desired_action_type and \
-                        (desired_action_tile_id is None or int(act.correspond_tiles[0].tile) == action):
+                        (desired_action_tile_id is None or int(act.correspond_tiles[0].tile) == desired_action_tile_id):
                     has_valid_action = True
 
-                    if  desired_action_type in [mp.Action.Ankan, mp.Action.Kakan]:
-                        desired_action_tile_id = int(act.correspond_tiles[0].tile)
+                    if desired_action_type in [mp.Action.Ankan, mp.Action.Kakan]:
+                        kan_tile_id = int(act.correspond_tiles[0].tile)
 
                     break
                 action_no += 1
@@ -698,7 +698,6 @@ class EnvMahjong3(gym.Env):
 
             elif action == ADDKAN:
                 # --------------- update game states  -------------
-                kan_tile_id = desired_action_tile_id
                 side_tiles_added_by_naru = [[kan_tile_id * 4, 0]]  # because aka only 1
 
                 hand_tiles_removed_by_naru = []
@@ -716,7 +715,6 @@ class EnvMahjong3(gym.Env):
 
             elif action == ANKAN:
                 # --------------- update game states  -------------
-                kan_tile_id = desired_action_tile_id
                 side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
                                             [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
 
