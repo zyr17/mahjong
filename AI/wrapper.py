@@ -167,7 +167,7 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
     all_obs_0p[:, game_wind_ind] = game_wind  # Case 1 to 4 in dim 0
     all_obs_0p[:, self_wind_ind] = self_wind
 
-    #------------ Latest Tile -------------
+    # ------------ Latest Tile -------------
     if latest_tile is not None:
         all_obs_0p[int(latest_tile / 4), latest_tile_ind] = 1
 
@@ -230,7 +230,6 @@ class EnvMahjong3(gym.Env):
         # ----------------- Statistics ------------------
         self.game_count += 1
 
-        self.horas = [False, False, False, False]
         self.played_a_tile = [False, False, False, False]
 
         self.scores_init = np.zeros([4], dtype=np.float32)
@@ -271,9 +270,14 @@ class EnvMahjong3(gym.Env):
 
         who, what = self.who_do_what()
 
+        self.is_deciding_riichi = True
+        self.riichi_tile_id = -1
+
         return self.get_obs(who)
 
     def get_valid_actions(self, nhot=True):
+
+        ## Note that the curr_valid_action are ordered, corresonding the
         if not nhot:
             return self.curr_valid_actions
         else:
@@ -303,16 +307,24 @@ class EnvMahjong3(gym.Env):
             raise ValueError("action is not valid!! \
                 Current valid actions can be obtained by env.get_valid_actions(onehot=False)")
 
-        assert len(np.argwhere(valid_actions == action)) == 1
-        action_no = np.argwhere(valid_actions == action)[0]
-
         if what == "reponse":
-            return self.step_response(action_no, player_id)
+            return self.step_response(action, player_id)
         elif what == "play":
-            return self.step_play(action_no, player_id)
+            ## !! Riici and discard are separate
+            if self.is_deciding_riichi:
+                if action == RIICHI:
+                    riichi = True
+                elif action == NOOP:
+                    riichi = False
+                else:
+                    raise ValueError
+            else:
+                riichi = False
+
+            return self.step_play(action, player_id, riichi)
 
     def get_obs(self, player_id):
-
+        # TODO: each player curr_all_obs
         player_wind_obs = np.zeros([34])
         player_wind_obs[27 + (8 - self.oya_id - player_id) % 4] = 1
 
@@ -327,14 +339,15 @@ class EnvMahjong3(gym.Env):
 
     def get_state(self):
         # get raw state
-        return self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,\
-            self.game_wind_obs, self.latest_tile
+        return self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles, \
+               self.game_wind_obs, self.latest_tile
 
     def get_phase_text(self):
         return self.Phases[self.t.get_phase()]
 
-    def step_play(self, action, playerNo):
+    def step_play(self, action, playerNo, riichi=False):
         # self action phase
+
         current_playerNo = self.t.who_make_selection()
 
         if not self.t.get_phase() < 4:
@@ -346,35 +359,164 @@ class EnvMahjong3(gym.Env):
         score_before = self.t.players[playerNo].score
 
         aval_actions = self.t.get_self_actions()
-        if aval_actions[action].action == mp.Action.Tsumo or aval_actions[action].action == mp.Action.KyuShuKyuHai:
-            self.horas[playerNo] = True
 
-        self.t.make_selection(action)
+        self.can_riichi = False
+        for act in aval_actions:
+            if act.action == mp.Action.Riichi:
+                self.can_riichi = True
+                break
 
-        if self.t.get_selected_action() == mp.Action.Play:
-            self.played_a_tile[playerNo] = True
-
-        new_state = self.get_state_(playerNo)
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            reward = self.get_final_score_change()[playerNo]
-        else:
-            reward = self.t.players[playerNo].score - score_before
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            done = 1
-            self.final_score_changes.append(self.get_final_score_change())
-
-        else:
+        if self.can_riichi and action < 34 and (not self.is_deciding_riichi):
+            self.is_deciding_riichi = True
+            self.riichi_tile_id = action
+            reward = 0
             done = 0
 
-        for i in range(4):
-            self.scores_before[i] = self.t.players[i].score
+            # ------ update state -------
 
-        return new_state, reward, done, info
+            if self.riichi_tile_id == int(self.latest_tile / 4):
+                is_from_hand = 1
+            else:
+                is_from_hand = 0
+            is_riichi = 0
 
-    def step_response(self, action:int, playerNo:int):
+            discard_tile_id = action
+
+            correctly_discarded = False
+            for xx in range(4):
+                try:
+                    self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
+                    correctly_discarded = True
+                    removed_tile = discard_tile_id * 4 + 3 - xx
+                    break
+                except:
+                    pass
+            if not correctly_discarded:
+                raise ValueError
+
+            self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+            self.latest_tile = removed_tile
+
+        else:
+            if riichi:
+                desired_action_type = mp.Action.Riichi
+                desired_action_tile = self.riichi_tile_id
+                if self.riichi_tile_id == int(self.latest_tile / 4):
+                    is_from_hand = 1
+                else:
+                    is_from_hand = 0
+            else:  # normal step
+                if action < 34:
+                    desired_action_type = mp.Action.Play
+                    desired_action_tile = action
+                    if action == int(self.latest_tile / 4):
+                        is_from_hand = 1
+                    else:
+                        is_from_hand = 0
+                elif action == ANKAN or action == ADDKAN:
+                    desired_action_tile = None  # TODO: There is some simplification
+                    desired_action_type = mp.Action.Kan
+                elif action == TSUMO:
+                    desired_action_type = mp.Action.Tsumo
+                    desired_action_tile = None
+                elif action == PUSH:
+                    desired_action_type = mp.Action.KyuShuKyuHai
+                    desired_action_tile = None
+                else:
+                    raise ValueError
+
+            action_no = 0
+            has_valid_action = False
+            for act in aval_actions:
+                if act.action == desired_action_type and \
+                        (int(act.correspond_tile.tile) == action or desired_action_tile is None):
+                    has_valid_action = True
+                    break
+                action_no += 1
+
+            assert has_valid_action == True
+
+            self.t.make_selection(action_no)
+
+            if self.t.get_selected_action() == mp.Action.Play or self.t.get_selected_action() == mp.Action.Riichi:
+                self.played_a_tile[playerNo] = True
+                if aval_actions[action_no].correspond_tile.red_dora:
+                    self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
+                else:
+                    self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
+
+            if self.Phases[self.t.get_phase()] == "GAME_OVER":
+                reward = self.get_final_score_change()[playerNo] / self.reward_unit
+            else:
+                reward = (self.t.players[playerNo].score - score_before) / self.reward_unit
+
+            if self.Phases[self.t.get_phase()] == "GAME_OVER":
+                done = 1
+                self.final_score_changes.append(self.get_final_score_change())
+
+            else:
+                done = 0
+
+            for i in range(4):
+                self.scores_before[i] = self.t.players[i].score
+
+            self.is_deciding_riichi = False
+
+            # ----------------- State update -------------------
+
+            # if is riici or discard:
+            if desired_action_type == mp.Action.Riichi or desired_action_type == mp.Action.Play:
+                discard_tile_id = int(self.t.get_selected_action_tile().tile)
+                assert desired_action_type == int(self.t.get_selected_action_tile().tile)
+
+                if desired_action_type == mp.Action.Play:
+                    correctly_discarded = False
+                    for xx in range(4):
+                        try:
+                            self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
+                            correctly_discarded = True
+                            removed_tile = discard_tile_id * 4 + 3 - xx
+                            break
+                        except:
+                            pass
+                    if not correctly_discarded:
+                        raise ValueError
+
+                    if riichi:
+                        is_riichi = 1
+                    else:
+                        is_riichi = 0
+
+                    self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+                    self.latest_tile = self.riichi_tile_id * 4 + 3
+
+                elif desired_action_type == mp.Action.Riichi:  # discard already done
+                    self.river_tiles[playerNo][-1][-1] = 1  # make riichi obs True
+
+            elif action == TSUMO or action == PUSH:
+                self.latest_tile = action * 4 + 3
+                pass
+
+            elif action == ADDKAN:
+                # TODO
+
+                self.latest_tile = None
+                pass
+
+            elif action == ANKAN:
+                # TODO
+                self.latest_tile = None
+                # TODO: After Naru, latest_tile = None!!!
+                # TODO: draw card changing state !!!
+                pass
+            else:
+                raise ValueError
+
+        return self.get_obs(playerNo), reward, done, info
+
+    def step_response(self, action: int, playerNo: int):
         # response phase
+        # TODO: action now is an int from 0 to 45
 
         current_playerNo = self.t.who_make_selection()
 
@@ -388,18 +530,15 @@ class EnvMahjong3(gym.Env):
 
         aval_actions = self.t.get_response_actions()
 
-        if aval_actions[action].action == mp.Action.Ron or aval_actions[action].action == mp.Action.ChanKan or aval_actions[action].action == mp.Action.ChanAnKan:
-            self.horas[playerNo] = True
-
         self.t.make_selection(action)
 
         self.played_a_tile[playerNo] = False
         new_state = self.get_state_(playerNo)
 
         if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            reward = self.get_final_score_change()[playerNo]
+            reward = self.get_final_score_change()[playerNo] / self.reward_unit
         else:
-            reward = self.t.players[playerNo].score - score_before
+            reward = (self.t.players[playerNo].score - score_before) / self.reward_unit
 
         if self.Phases[self.t.get_phase()] == "GAME_OVER":
             done = 1
@@ -453,9 +592,9 @@ class EnvMahjong3(gym.Env):
         k = np.random.random_integers(0, 3)
 
         matrix_features_new[:, 27, :] = tmp[k % 4]
-        matrix_features_new[:, 28, :] = tmp[(k+1) % 4]
-        matrix_features_new[:, 29, :] = tmp[(k+2) % 4]
-        matrix_features_new[:, 30, :] = tmp[(k+3) % 4]
+        matrix_features_new[:, 28, :] = tmp[(k + 1) % 4]
+        matrix_features_new[:, 29, :] = tmp[(k + 2) % 4]
+        matrix_features_new[:, 30, :] = tmp[(k + 3) % 4]
 
         # chh
         tmp = []
@@ -467,8 +606,8 @@ class EnvMahjong3(gym.Env):
         tmp.append(matrix_features[:, 33, :])
 
         matrix_features_new[:, 31, :] = tmp[k % 3]
-        matrix_features_new[:, 32, :] = tmp[(k+1) % 3]
-        matrix_features_new[:, 33, :] = tmp[(k+2) % 3]
+        matrix_features_new[:, 32, :] = tmp[(k + 1) % 3]
+        matrix_features_new[:, 33, :] = tmp[(k + 2) % 3]
 
         return matrix_features_new
 
@@ -486,76 +625,6 @@ class EnvMahjong3(gym.Env):
         return matrix_features, vector_features
 
     def tile_to_id(self, tile):
-        # if tile == mp.BaseTile._1m:
-        #     return 0
-        # elif tile == mp.BaseTile._2m:
-        #     return 1
-        # elif tile == mp.BaseTile._3m:
-        #     return 2
-        # elif tile == mp.BaseTile._4m:
-        #     return 3
-        # elif tile == mp.BaseTile._5m:
-        #     return 4
-        # elif tile == mp.BaseTile._6m:
-        #     return 5
-        # elif tile == mp.BaseTile._7m:
-        #     return 6
-        # elif tile == mp.BaseTile._8m:
-        #     return 7
-        # elif tile == mp.BaseTile._9m:
-        #     return 8
-        # elif tile == mp.BaseTile._1p:
-        #     return 9
-        # elif tile == mp.BaseTile._2p:
-        #     return 10
-        # elif tile == mp.BaseTile._3p:
-        #     return 11
-        # elif tile == mp.BaseTile._4p:
-        #     return 12
-        # elif tile == mp.BaseTile._5p:
-        #     return 13
-        # elif tile == mp.BaseTile._6p:
-        #     return 14
-        # elif tile == mp.BaseTile._7p:
-        #     return 15
-        # elif tile == mp.BaseTile._8p:
-        #     return 16
-        # elif tile == mp.BaseTile._9p:
-        #     return 17
-        # elif tile == mp.BaseTile._1s:
-        #     return 18
-        # elif tile == mp.BaseTile._2s:
-        #     return 19
-        # elif tile == mp.BaseTile._3s:
-        #     return 20
-        # elif tile == mp.BaseTile._4s:
-        #     return 21
-        # elif tile == mp.BaseTile._5s:
-        #     return 22
-        # elif tile == mp.BaseTile._6s:
-        #     return 23
-        # elif tile == mp.BaseTile._7s:
-        #     return 24
-        # elif tile == mp.BaseTile._8s:
-        #     return 25
-        # elif tile == mp.BaseTile._9s:
-        #     return 26
-        # elif tile == mp.BaseTile.east:
-        #     return 27
-        # elif tile == mp.BaseTile.south:
-        #     return 28
-        # elif tile == mp.BaseTile.west:
-        #     return 29
-        # elif tile == mp.BaseTile.north:
-        #     return 30
-        # elif tile == mp.BaseTile.haku:
-        #     return 31
-        # elif tile == mp.BaseTile.hatsu:
-        #     return 32
-        # elif tile == mp.BaseTile.chu:
-        #     return 33
-        # else:
-        #     raise Exception("Input must be a tile!!")
         return int(tile)
 
     def who_do_what(self):
@@ -566,8 +635,6 @@ class EnvMahjong3(gym.Env):
 
     def render(self, mode='human'):
         print(self.t.get_selected_action.action)
-
-
 
 
 class EnvMahjong2(gym.Env):
@@ -607,7 +674,7 @@ class EnvMahjong2(gym.Env):
         self.t = mp.Table()
 
         oya = np.random.random_integers(0, 3)
-        winds =['east', 'south', 'west', 'north']
+        winds = ['east', 'south', 'west', 'north']
         wind = winds[np.random.random_integers(0, 3)]
         oya = '{}'.format(oya)
 
@@ -703,7 +770,7 @@ class EnvMahjong2(gym.Env):
 
         return new_state, reward, done, info
 
-    def step_response(self, action:int, playerNo:int):
+    def step_response(self, action: int, playerNo: int):
         # response phase
 
         current_playerNo = self.t.who_make_selection()
@@ -718,7 +785,8 @@ class EnvMahjong2(gym.Env):
 
         aval_actions = self.t.get_response_actions()
 
-        if aval_actions[action].action == mp.Action.Ron or aval_actions[action].action == mp.Action.ChanKan or aval_actions[action].action == mp.Action.ChanAnKan:
+        if aval_actions[action].action == mp.Action.Ron or aval_actions[action].action == mp.Action.ChanKan or \
+                aval_actions[action].action == mp.Action.ChanAnKan:
             self.horas[playerNo] = True
 
         self.t.make_selection(action)
@@ -786,9 +854,9 @@ class EnvMahjong2(gym.Env):
         k = np.random.random_integers(0, 3)
 
         matrix_features_new[:, 27, :] = tmp[k % 4]
-        matrix_features_new[:, 28, :] = tmp[(k+1) % 4]
-        matrix_features_new[:, 29, :] = tmp[(k+2) % 4]
-        matrix_features_new[:, 30, :] = tmp[(k+3) % 4]
+        matrix_features_new[:, 28, :] = tmp[(k + 1) % 4]
+        matrix_features_new[:, 29, :] = tmp[(k + 2) % 4]
+        matrix_features_new[:, 30, :] = tmp[(k + 3) % 4]
 
         # chh
         tmp = []
@@ -800,8 +868,8 @@ class EnvMahjong2(gym.Env):
         tmp.append(matrix_features[:, 33, :])
 
         matrix_features_new[:, 31, :] = tmp[k % 3]
-        matrix_features_new[:, 32, :] = tmp[(k+1) % 3]
-        matrix_features_new[:, 33, :] = tmp[(k+2) % 3]
+        matrix_features_new[:, 32, :] = tmp[(k + 1) % 3]
+        matrix_features_new[:, 33, :] = tmp[(k + 2) % 3]
 
         return matrix_features_new
 
@@ -911,5 +979,3 @@ class EnvMahjong2(gym.Env):
 
     def render(self, mode='human'):
         print(self.t.get_selected_action.action)
-
-
