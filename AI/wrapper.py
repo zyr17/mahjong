@@ -45,9 +45,9 @@ UNICODE_TILES = """
 
 def TileTo136(Tile):
     if Tile.red_dora:
-        return int(Tile.tile) * 4 + 3
+        return int(Tile.tile) * 4
     else:
-        int(Tile.tile)
+        return int(Tile.tile) * 4 + 3
 
 
 def dora_ind_2_dora_id(ind_id):
@@ -311,7 +311,7 @@ class EnvMahjong3(gym.Env):
                         self.curr_valid_actions.append(TSUMO)
                     elif act.action == mp.Action.KyuShuKyuHai:
                         self.curr_valid_actions.append(PUSH)
-                    else:
+                    elif act.action != mp.Action.Riichi:
                         print(act.action)
                         raise ValueError
 
@@ -338,6 +338,7 @@ class EnvMahjong3(gym.Env):
                                         int(self.latest_tile / 4)):
                         chi_side = CHIRIGHT
                     else:
+                        print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.latest_tile / 4))
                         raise ValueError
                     self.curr_valid_actions.append(chi_side)
                 else:
@@ -400,7 +401,7 @@ class EnvMahjong3(gym.Env):
         return who
 
     def get_payoffs(self):
-        scores_change = self.final_score_changes()
+        scores_change = self.get_final_score_change()
         payoff = [sc / self.reward_unit for sc in scores_change]
         return payoff
 
@@ -475,19 +476,23 @@ class EnvMahjong3(gym.Env):
         return self.Phases[self.t.get_phase()]
 
     def update_hand_and_latest_tiles(self):
-        playerNo = self.get_curr_player_id()
-        old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
 
-        self.hand_tiles = [[], [], [], []]
-        for pid in range(4):
-            for i in range(len(self.t.players[pid].hand)):
-                if self.t.players[pid].hand[i].red_dora:
-                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
-                else:
-                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+        if self.t.get_phase() != 16:
+            playerNo = self.get_curr_player_id()
+            old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
 
-        if len(self.hand_tiles[playerNo]) - len(old_hand_tiles_player) == 1:  # just drawed a tile
-            self.latest_tile = self.hand_tiles[playerNo][-1]
+            self.hand_tiles = [[], [], [], []]
+            for pid in range(4):
+                for i in range(len(self.t.players[pid].hand)):
+                    if self.t.players[pid].hand[i].red_dora:
+                        self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
+                    else:
+                        self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+
+            if self.t.get_phase() < 4:
+                self.latest_tile = self.hand_tiles[playerNo][-1]
+        else:
+            print("This game already ended!")
 
         # if len(self.hand_tiles[playerNo]) - len(old_hand_tiles_player) == -1:  # just discard a tile
         #     if self.t.get_selected_action_tile().red_dora:
@@ -567,9 +572,12 @@ class EnvMahjong3(gym.Env):
                         is_from_hand = 1
                     else:
                         is_from_hand = 0
-                elif action == ANKAN or action == ADDKAN:
+                elif action == ANKAN:
                     desired_action_tile_id = None  # TODO: There is some simplification
-                    desired_action_type = mp.Action.Kan
+                    desired_action_type = mp.Action.AnKan
+                elif action == ADDKAN:
+                    desired_action_tile_id = None  # TODO: There is some simplification
+                    desired_action_type = mp.Action.Kakan
                 elif action == TSUMO:
                     desired_action_type = mp.Action.Tsumo
                     desired_action_tile_id = None
@@ -595,10 +603,12 @@ class EnvMahjong3(gym.Env):
 
             if self.t.get_selected_action() == mp.Action.Play or self.t.get_selected_action() == mp.Action.Riichi:
                 self.played_a_tile[playerNo] = True
+                assert aval_actions[action_no].correspond_tiles[0].tile == self.t.get_selected_action_tile().tile
                 if aval_actions[action_no].correspond_tiles[0].red_dora:
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
                 else:
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
+                print("played a tile!!!!", self.latest_tile)
 
             if self.Phases[self.t.get_phase()] == "GAME_OVER":
                 reward = self.get_final_score_change()[playerNo] / self.reward_unit
@@ -667,7 +677,8 @@ class EnvMahjong3(gym.Env):
 
                 for hh in hand_tiles_removed_by_naru:
                     self.hand_tiles[playerNo].remove(hh)
-                # self.latest_tile not change
+
+                self.latest_tile = None
 
             elif action == ANKAN:
                 # --------------- update game states  -------------
@@ -686,7 +697,7 @@ class EnvMahjong3(gym.Env):
                 for hh in hand_tiles_removed_by_naru:
                     self.hand_tiles[playerNo].remove(hh)
 
-                # self.latest_tile not change
+                self.latest_tile = None
                 # TODO: After Naru, latest_tile = None!!!
             else:
                 raise ValueError
@@ -788,27 +799,28 @@ class EnvMahjong3(gym.Env):
             self.t.make_selection(response_action_no)
             self.played_a_tile[playerNo] = False
 
-            self.latest_tile = None
-
-            # TODO: change side_tiles
             if action == PON:
                 pon_tile_id = int(aval_response_actions[response_action_no].correspond_tiles[0].tile)
                 pon_no_problem = False
+
                 for k in range(len(self.hand_tiles[playerNo])):
                     if int(self.hand_tiles[playerNo][k] / 4) == pon_tile_id:
                         pon_tile = self.hand_tiles[playerNo][k]
+                        pon_no_problem = True
                         break
                 assert pon_no_problem is True
                 side_tiles_added_by_naru = [[TileTo136(aval_response_actions[response_action_no].correspond_tiles[0]), 0],
                                             [TileTo136(aval_response_actions[response_action_no].correspond_tiles[1]), 0],
                                             [pon_tile, 1]]
-                self.side_tiles[playerNo].append(side_tiles_added_by_naru)
+                self.side_tiles[playerNo] += side_tiles_added_by_naru
+                self.latest_tile = None
 
             elif action == MINKAN:
                 kan_tile_id = int(aval_response_actions[response_action_no].correspond_tiles[0].tile)
                 side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
                                             [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
-                self.side_tiles[playerNo].append(side_tiles_added_by_naru)
+                self.side_tiles[playerNo] += side_tiles_added_by_naru
+                self.latest_tile = None
 
             elif action in [CHILEFT, CHIMIDDLE, CHIRIGHT]:
 
@@ -820,8 +832,12 @@ class EnvMahjong3(gym.Env):
                         if int(self.hand_tiles[playerNo][k] / 4) == chi_tile_id:
                             chi_tile = self.hand_tiles[playerNo][k]
                             side_tiles_added_by_naru.append([chi_tile, 0])
+                            chi_no_problem = True
                             break
                     assert chi_no_problem is True
+
+                self.side_tiles[playerNo] += side_tiles_added_by_naru
+                self.latest_tile = None
 
             elif action == NOOP:
                 pass
