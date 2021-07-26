@@ -43,6 +43,13 @@ UNICODE_TILES = """
 """.split()
 
 
+def TileTo136(Tile):
+    if Tile.red_dora:
+        return int(Tile.tile) * 4 + 3
+    else:
+        int(Tile.tile)
+
+
 def dora_ind_2_dora_id(ind_id):
     if ind_id == 8:
         return 0
@@ -249,7 +256,7 @@ class EnvMahjong3(gym.Env):
         self.dora_tiles = []
         self.game_wind_obs = np.zeros(34)  # index: -4
 
-        self.dora_tiles.append(dora_ind_2_dora_id(int(self.t.DORA[0].tile)))
+        self.dora_tiles.append(dora_ind_2_dora_id(int(self.t.DORA[0].tile)) * 4 + 3)
 
         if game_wind == "east":
             self.game_wind_obs[27] = 1
@@ -266,18 +273,121 @@ class EnvMahjong3(gym.Env):
 
         for pid in range(4):
             for i in range(len(self.t.players[pid].hand)):
-                self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile))
+                if self.t.players[pid].hand[i].red_dora:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
+                else:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
 
         who, what = self.who_do_what()
 
-        self.is_deciding_riichi = True
+        self.is_deciding_riichi = False
+        self.can_riichi = False
         self.riichi_tile_id = -1
+        self.curr_valid_actions = []
+        self.non_valid_discard_tiles_id = [[], [], [], []]
 
         return self.get_obs(who)
 
     def get_valid_actions(self, nhot=True):
 
-        ## Note that the curr_valid_action are ordered, corresonding the
+        self.update_hand_and_latest_tiles()
+
+        self.curr_valid_actions = []
+
+        phase = self.t.get_phase()
+        if phase < 4:
+            aval_actions = self.t.get_self_actions()
+            if self.is_deciding_riichi:
+                self.curr_valid_actions += [RIICHI, NOOP]
+            else:
+                for act in aval_actions:
+                    if act.action == mp.Action.Play:
+                        self.curr_valid_actions.append(int(act.correspond_tiles[0].tile))
+                    elif act.action == mp.Action.Ankan:
+                        self.curr_valid_actions.append(ANKAN)
+                    elif act.action == mp.Action.Kakan:
+                        self.curr_valid_actions.append(ADDKAN)
+                    elif act.action == mp.Action.Tsumo:
+                        self.curr_valid_actions.append(TSUMO)
+                    elif act.action == mp.Action.KyuShuKyuHai:
+                        self.curr_valid_actions.append(PUSH)
+                    else:
+                        print(act.action)
+                        raise ValueError
+
+        elif phase < 16:
+            aval_actions = self.t.get_response_actions()
+            for act in aval_actions:
+                if act.action == mp.Action.Pon:
+                    self.curr_valid_actions.append(PON)
+                elif act.action == mp.Action.Kan:
+                    self.curr_valid_actions.append(MINKAN)
+                elif act.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
+                    self.curr_valid_actions.append(RON)
+                elif act.action == mp.Action.Pass:
+                    self.curr_valid_actions.append(NOOP)
+                elif act.action == mp.Action.Chi:
+                    chi_parents_tiles = act.correspond_tiles
+                    if is_consecutive(int(self.latest_tile / 4), int(chi_parents_tiles[0].tile),
+                                      int(chi_parents_tiles[1].tile)):
+                        chi_side = CHILEFT
+                    elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.latest_tile / 4),
+                                        int(chi_parents_tiles[1].tile)):
+                        chi_side = CHIMIDDLE
+                    elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile),
+                                        int(self.latest_tile / 4)):
+                        chi_side = CHIRIGHT
+                    else:
+                        raise ValueError
+                    self.curr_valid_actions.append(chi_side)
+                else:
+                    print(act.action)
+                    raise ValueError
+        else:
+            self.curr_valid_actions = [NOOP]
+
+        self.curr_valid_actions = list(set(self.curr_valid_actions))
+
+        # TODO: shiti!!!!!
+
+        # ## Note that the curr_valid_action are ordered, corresonding to self.t.get_aval_next_states()
+        #
+        # remaining_tiles = self.t.get_remain_tile()
+        #
+        # #--------------- judge whether can naru ----------------
+        # # TODO: how to make conditions
+        # can_naru = False
+        #
+        # self.curr_valid_actions = [NOOP]
+        #
+        # player_id = self.get_curr_player_id()
+        #
+        # discard_tile_id = int(self.t.get_selected_action_tile().tile)
+        # hand_tile_ids = [int(ht / 4) for ht in self.hand_tiles[player_id]]
+        #
+        # # TODO: currently is if can win, then win. Need to change this in the future.
+        #
+        # if hand_tile_ids.count(discard_tile_id) >= 2:  # Pon
+        #     can_naru = True
+        #     self.valid_int_actions.append(PON)
+        #
+        #     if hand_tile_ids.count(discard_tile_id) == 3 and remaining_tiles >= 1:  # Min-Kan
+        #         self.valid_int_actions.append(MINKAN)
+        #
+        # if player_id == (main_player_no + 3) % 4:  # TODO: how to make conditions
+        #     # Can Chi
+        #     for i in range(len(hand_tile_ids)):
+        #         for j in range(len(hand_tile_ids)):
+        #             if is_consecutive(discard_tile_id, hand_tile_ids[i], hand_tile_ids[j]):
+        #                 self.valid_int_actions.append(CHILEFT)
+        #                 can_naru = True
+        #             elif is_consecutive(hand_tile_ids[i], discard_tile_id, hand_tile_ids[j]):
+        #                 self.valid_int_actions.append(CHIMIDDLE)
+        #                 can_naru = True
+        #             elif is_consecutive(hand_tile_ids[i], hand_tile_ids[j], discard_tile_id):
+        #                 self.valid_int_actions.append(CHIRIGHT)
+        #                 can_naru = True
+        #
         if not nhot:
             return self.curr_valid_actions
         else:
@@ -300,6 +410,11 @@ class EnvMahjong3(gym.Env):
     def step(self, player_id, action, raw_action=False):
         who, what = self.who_do_what()
 
+        # if self.latest_tile is not None:
+        #     assert int(self.latest_tile / 4) == int(self.t.get_selected_action_tile().tile)
+
+        self.update_hand_and_latest_tiles()
+
         assert who == player_id
 
         valid_actions = self.get_valid_actions(nhot=False)
@@ -307,7 +422,7 @@ class EnvMahjong3(gym.Env):
             raise ValueError("action is not valid!! \
                 Current valid actions can be obtained by env.get_valid_actions(onehot=False)")
 
-        if what == "reponse":
+        if what == "response":
             return self.step_response(action, player_id)
         elif what == "play":
             ## !! Riici and discard are separate
@@ -324,6 +439,9 @@ class EnvMahjong3(gym.Env):
             return self.step_play(action, player_id, riichi)
 
     def get_obs(self, player_id):
+
+        self.update_hand_and_latest_tiles()
+
         # TODO: each player curr_all_obs
         player_wind_obs = np.zeros([34])
         player_wind_obs[27 + (8 - self.oya_id - player_id) % 4] = 1
@@ -335,18 +453,54 @@ class EnvMahjong3(gym.Env):
         return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
 
     def get_full_obs(self, player_id):
+
+        self.update_hand_and_latest_tiles()
+
         return self.curr_all_obs[player_id].swapaxes(0, 1)
 
     def get_state(self):
         # get raw state
+        self.hand_tiles = [[], [], [], []]
+        for pid in range(4):
+            for i in range(len(self.t.players[pid].hand)):
+                if self.t.players[pid].hand[i].red_dora:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
+                else:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+
         return self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles, \
                self.game_wind_obs, self.latest_tile
 
     def get_phase_text(self):
         return self.Phases[self.t.get_phase()]
 
+    def update_hand_and_latest_tiles(self):
+        playerNo = self.get_curr_player_id()
+        old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
+
+        self.hand_tiles = [[], [], [], []]
+        for pid in range(4):
+            for i in range(len(self.t.players[pid].hand)):
+                if self.t.players[pid].hand[i].red_dora:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
+                else:
+                    self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+
+        if len(self.hand_tiles[playerNo]) - len(old_hand_tiles_player) == 1:  # just drawed a tile
+            self.latest_tile = self.hand_tiles[playerNo][-1]
+
+        # if len(self.hand_tiles[playerNo]) - len(old_hand_tiles_player) == -1:  # just discard a tile
+        #     if self.t.get_selected_action_tile().red_dora:
+        #         self.latest_tile = int(self.t.get_selected_action_tile().tile) * 4
+        #     else:
+        #         self.latest_tile = int(self.t.get_selected_action_tile().tile) * 4 + 3
+
     def step_play(self, action, playerNo, riichi=False):
         # self action phase
+
+        # -------------------- update latest tile for drawing a tile ----------
+        self.update_hand_and_latest_tiles()
+        # --------------------------------------------------------------------------
 
         current_playerNo = self.t.who_make_selection()
 
@@ -400,7 +554,7 @@ class EnvMahjong3(gym.Env):
         else:
             if riichi:
                 desired_action_type = mp.Action.Riichi
-                desired_action_tile = self.riichi_tile_id
+                desired_action_tile_id = self.riichi_tile_id
                 if self.riichi_tile_id == int(self.latest_tile / 4):
                     is_from_hand = 1
                 else:
@@ -408,20 +562,20 @@ class EnvMahjong3(gym.Env):
             else:  # normal step
                 if action < 34:
                     desired_action_type = mp.Action.Play
-                    desired_action_tile = action
-                    if action == int(self.latest_tile / 4):
+                    desired_action_tile_id = action
+                    if self.latest_tile is not None and action != int(self.latest_tile / 4):
                         is_from_hand = 1
                     else:
                         is_from_hand = 0
                 elif action == ANKAN or action == ADDKAN:
-                    desired_action_tile = None  # TODO: There is some simplification
+                    desired_action_tile_id = None  # TODO: There is some simplification
                     desired_action_type = mp.Action.Kan
                 elif action == TSUMO:
                     desired_action_type = mp.Action.Tsumo
-                    desired_action_tile = None
+                    desired_action_tile_id = None
                 elif action == PUSH:
                     desired_action_type = mp.Action.KyuShuKyuHai
-                    desired_action_tile = None
+                    desired_action_tile_id = None
                 else:
                     raise ValueError
 
@@ -429,18 +583,19 @@ class EnvMahjong3(gym.Env):
             has_valid_action = False
             for act in aval_actions:
                 if act.action == desired_action_type and \
-                        (int(act.correspond_tile.tile) == action or desired_action_tile is None):
+                        (int(act.correspond_tiles[0].tile) == action or desired_action_tile_id is None):
                     has_valid_action = True
+                    desired_action_tile_id = int(act.correspond_tiles[0].tile)
                     break
                 action_no += 1
 
-            assert has_valid_action == True
+            assert has_valid_action is True
 
             self.t.make_selection(action_no)
 
             if self.t.get_selected_action() == mp.Action.Play or self.t.get_selected_action() == mp.Action.Riichi:
                 self.played_a_tile[playerNo] = True
-                if aval_actions[action_no].correspond_tile.red_dora:
+                if aval_actions[action_no].correspond_tiles[0].red_dora:
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
                 else:
                     self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
@@ -467,7 +622,7 @@ class EnvMahjong3(gym.Env):
             # if is riici or discard:
             if desired_action_type == mp.Action.Riichi or desired_action_type == mp.Action.Play:
                 discard_tile_id = int(self.t.get_selected_action_tile().tile)
-                assert desired_action_type == int(self.t.get_selected_action_tile().tile)
+                assert desired_action_tile_id == int(self.t.get_selected_action_tile().tile)
 
                 if desired_action_type == mp.Action.Play:
                     correctly_discarded = False
@@ -488,29 +643,55 @@ class EnvMahjong3(gym.Env):
                         is_riichi = 0
 
                     self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
-                    self.latest_tile = self.riichi_tile_id * 4 + 3
+                    self.latest_tile = removed_tile
 
                 elif desired_action_type == mp.Action.Riichi:  # discard already done
                     self.river_tiles[playerNo][-1][-1] = 1  # make riichi obs True
 
             elif action == TSUMO or action == PUSH:
-                self.latest_tile = action * 4 + 3
+                # Does not need to do anything
                 pass
 
             elif action == ADDKAN:
-                # TODO
+                # --------------- update game states  -------------
+                kan_tile_id = desired_action_tile_id
+                side_tiles_added_by_naru = [[kan_tile_id * 4, 0]]  # because aka only 1
 
-                self.latest_tile = None
-                pass
+                hand_tiles_removed_by_naru = []
+
+                for ht in self.hand_tiles[playerNo]:
+                    if int(ht / 4) == kan_tile_id:
+                        hand_tiles_removed_by_naru.append(ht)
+
+                self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
+
+                for hh in hand_tiles_removed_by_naru:
+                    self.hand_tiles[playerNo].remove(hh)
+                # self.latest_tile not change
 
             elif action == ANKAN:
-                # TODO
-                self.latest_tile = None
+                # --------------- update game states  -------------
+                kan_tile_id = desired_action_tile_id
+                side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
+                                            [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
+
+                hand_tiles_removed_by_naru = []
+
+                for ht in self.hand_tiles[playerNo]:
+                    if int(ht / 4) == kan_tile_id:
+                        hand_tiles_removed_by_naru.append(ht)
+
+                self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
+
+                for hh in hand_tiles_removed_by_naru:
+                    self.hand_tiles[playerNo].remove(hh)
+
+                # self.latest_tile not change
                 # TODO: After Naru, latest_tile = None!!!
-                # TODO: draw card changing state !!!
-                pass
             else:
                 raise ValueError
+
+        # TODO: curr_valid_actions
 
         return self.get_obs(playerNo), reward, done, info
 
@@ -518,22 +699,136 @@ class EnvMahjong3(gym.Env):
         # response phase
         # TODO: action now is an int from 0 to 45
 
+        # -------------------- update latest tile for drawing a tile ----------
+        self.update_hand_and_latest_tiles()
+        # --------------------------------------------------------------------------
+
         current_playerNo = self.t.who_make_selection()
 
         if not self.t.get_phase() >= 4 and not self.t.get_phase == 16:
             raise Exception("Current phase is not response phase!!")
         if not current_playerNo == playerNo:
-            raise Exception("Current player is not the one neesd to execute action!!")
+            raise Exception("Current player is not the one needs to execute action!!")
 
         info = {"playerNo": playerNo}
         score_before = self.t.players[playerNo].score
 
-        aval_actions = self.t.get_response_actions()
+        can_win = False
+        win_action_no = 0
+        aval_response_actions = self.t.get_response_actions()
+        for response_action in aval_response_actions:
+            if response_action.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
+                can_win = True
+                break
+            win_action_no += 1
 
-        self.t.make_selection(action)
+        # ------------- if can win, just win -----------
+        if can_win:
+            self.t.make_selection(win_action_no)
+            if self.t.get_selected_action_tile().red_dora:
+                ron_tile = int(self.t.get_selected_action_tile().tile) * 4
+            else:
+                ron_tile = int(self.t.get_selected_action_tile().tile) * 4 + 3
+            self.hand_tiles[playerNo].append(ron_tile)
+        else:
+            # TODO: chi, pon, kan or noop; after Naru, latest_tile becomes None
 
-        self.played_a_tile[playerNo] = False
-        new_state = self.get_state_(playerNo)
+            if action == PON:
+                desired_action_type = mp.Action.Pon
+            elif action == MINKAN:
+                desired_action_type = mp.Action.Kan
+            elif action in [CHILEFT, CHIMIDDLE, CHIRIGHT]:
+                desired_action_type = mp.Action.Chi
+            elif action == NOOP:
+                desired_action_type = mp.Action.Pass
+            else:
+                raise ValueError
+
+            response_action_no = 0
+            if action in [PON, MINKAN, NOOP]:
+                for response_action in aval_response_actions:
+                    if response_action.action == desired_action_type:
+                        break
+                    response_action_no += 1
+            else:  # Chi
+                chi_no_problem = False
+                for response_action in aval_response_actions:
+                    if response_action.action == desired_action_type:
+
+                        chi_parents_tiles = aval_response_actions[response_action_no].correspond_tiles
+
+                        if is_consecutive(int(self.latest_tile / 4), int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile)):
+                            chi_side = CHILEFT
+                            if int(chi_parents_tiles[1].tile) not in [8, 17, 26, 27, 28, 29, 30, 31, 32, 33]:
+                                self.non_valid_discard_tiles_id[playerNo] = [int(chi_parents_tiles[1].tile) + 1]
+                            else:
+                                self.non_valid_discard_tiles_id[playerNo] = []
+
+                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.latest_tile / 4), int(chi_parents_tiles[1].tile)):
+                            chi_side = CHIMIDDLE
+
+                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile), int(self.latest_tile / 4)):
+                            chi_side = CHIRIGHT
+                            if int(chi_parents_tiles[0].tile) not in [0, 9, 18, 27, 28, 29, 30, 31, 32, 33]:
+                                self.non_valid_discard_tiles_id[playerNo] = [int(chi_parents_tiles[0].tile) - 1]
+                            else:
+                                self.non_valid_discard_tiles_id[playerNo] = []
+
+                        else:
+                            chi_side = -1
+
+                        if chi_side == action:
+                            chi_no_problem = True
+                            break
+
+                    response_action_no += 1
+
+                assert chi_no_problem is True
+
+            self.t.make_selection(response_action_no)
+            self.played_a_tile[playerNo] = False
+
+            self.latest_tile = None
+
+            # TODO: change side_tiles
+            if action == PON:
+                pon_tile_id = int(aval_response_actions[response_action_no].correspond_tiles[0].tile)
+                pon_no_problem = False
+                for k in range(len(self.hand_tiles[playerNo])):
+                    if int(self.hand_tiles[playerNo][k] / 4) == pon_tile_id:
+                        pon_tile = self.hand_tiles[playerNo][k]
+                        break
+                assert pon_no_problem is True
+                side_tiles_added_by_naru = [[TileTo136(aval_response_actions[response_action_no].correspond_tiles[0]), 0],
+                                            [TileTo136(aval_response_actions[response_action_no].correspond_tiles[1]), 0],
+                                            [pon_tile, 1]]
+                self.side_tiles[playerNo].append(side_tiles_added_by_naru)
+
+            elif action == MINKAN:
+                kan_tile_id = int(aval_response_actions[response_action_no].correspond_tiles[0].tile)
+                side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
+                                            [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
+                self.side_tiles[playerNo].append(side_tiles_added_by_naru)
+
+            elif action in [CHILEFT, CHIMIDDLE, CHIRIGHT]:
+
+                side_tiles_added_by_naru = [[self.latest_tile, 1]]
+
+                for chi_tile_id in [int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile)]:
+                    chi_no_problem = False
+                    for k in range(len(self.hand_tiles[playerNo])):
+                        if int(self.hand_tiles[playerNo][k] / 4) == chi_tile_id:
+                            chi_tile = self.hand_tiles[playerNo][k]
+                            side_tiles_added_by_naru.append([chi_tile, 0])
+                            break
+                    assert chi_no_problem is True
+
+            elif action == NOOP:
+                pass
+            else:
+                pass
+
+        # ------------ JIESUAN --------------
 
         if self.Phases[self.t.get_phase()] == "GAME_OVER":
             reward = self.get_final_score_change()[playerNo] / self.reward_unit
@@ -549,7 +844,7 @@ class EnvMahjong3(gym.Env):
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
 
-        return new_state, reward, done, info
+        return self.get_obs(playerNo), reward, done, info
 
     def get_final_score_change(self):
         rewards = np.zeros([4], dtype=np.float32)
@@ -637,345 +932,345 @@ class EnvMahjong3(gym.Env):
         print(self.t.get_selected_action.action)
 
 
-class EnvMahjong2(gym.Env):
-    """
-    Mahjong Environment for FrOst Ver2
-    """
-
-    metadata = {'name': 'Mahjong', 'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
-    spec = {'id': 'TaskT'}
-
-    def __init__(self, printing=True):
-        self.t = mp.Table()
-        self.Phases = (
-            "P1_ACTION", "P2_ACTION", "P3_ACTION", "P4_ACTION", "P1_RESPONSE", "P2_RESPONSE", "P3_RESPONSE",
-            "P4_RESPONSE", "P1_抢杠RESPONSE", "P2_抢杠RESPONSE", "P3_抢杠RESPONSE", "P4_抢杠RESPONSE",
-            "P1_抢暗杠RESPONSE", "P2_抢暗杠RESPONSE", " P3_抢暗杠RESPONSE", " P4_抢暗杠RESPONSE", "GAME_OVER",
-            "P1_DRAW, P2_DRAW, P3_DRAW, P4_DRAW")
-        self.horas = [False, False, False, False]
-        self.played_a_tile = [False, False, False, False]
-        self.tile_in_air = None
-        self.final_score_changes = []
-        self.game_count = 0
-        self.printing = printing
-
-        self.matrix_feature_size = [34, 58]
-        self.vector_feature_size = 30
-
-        self.scores_init = np.zeros([4], dtype=np.float32)
-        for i in range(4):
-            self.scores_init[i] = self.t.players[i].score
-
-        self.scores_before = np.zeros([4], dtype=np.float32)
-        for i in range(4):
-            self.scores_before[i] = self.t.players[i].score
-
-    def reset(self):
-        self.t = mp.Table()
-
-        oya = np.random.random_integers(0, 3)
-        winds = ['east', 'south', 'west', 'north']
-        wind = winds[np.random.random_integers(0, 3)]
-        oya = '{}'.format(oya)
-
-        # self.t.game_init()
-        self.t.game_init_with_metadata({"oya": oya, "wind": wind})
-
-        self.game_count += 1
-
-        self.horas = [False, False, False, False]
-        self.played_a_tile = [False, False, False, False]
-
-        self.scores_init = np.zeros([4], dtype=np.float32)
-        for i in range(4):
-            self.scores_init[i] = self.t.players[i].score
-
-        self.scores_before = np.zeros([4], dtype=np.float32)
-        for i in range(4):
-            self.scores_before[i] = self.t.players[i].score
-
-        return [self.get_state_(i) for i in range(4)]
-
-    def get_phase_text(self):
-        return self.Phases[self.t.get_phase()]
-
-    # def step_draw(self, playerNo):
-    #     current_playerNo = self.t.who_make_selection()
-    #
-    #     if not self.t.get_phase() < 4:
-    #         raise Exception("Current phase is not draw phase!!")
-    #     if not current_playerNo == playerNo:
-    #         raise Exception("Current player is not the one neesd to execute action!!")
-    #
-    #     info = {"playerNo": playerNo}
-    #     score_before = self.t.players[playerNo].score
-    #
-    #     self.played_a_tile[playerNo] = False
-    #     new_state = self.get_state_(playerNo)
-    #
-    #     # the following should be unnecessary but OK
-    #     if self.Phases[self.t.get_phase()] == "GAME_OVER":
-    #         reward = self.get_final_score_change()[playerNo]
-    #     else:
-    #         reward = self.t.players[playerNo].score - score_before
-    #
-    #     if self.Phases[self.t.get_phase()] == "GAME_OVER":
-    #         done = 1
-    #         self.final_score_changes.append(self.get_final_score_change())
-    #     else:
-    #         done = 0
-    #
-    #     for i in range(4):
-    #         self.scores_before[i] = self.t.players[i].score
-    #
-    #     return new_state, reward, done, info
-
-    def step_play(self, action, playerNo):
-        # self action phase
-        current_playerNo = self.t.who_make_selection()
-
-        if not self.t.get_phase() < 4:
-            raise Exception("Current phase is not self-action phase!!")
-        if not current_playerNo == playerNo:
-            raise Exception("Current player is not the one neesd to execute action!!")
-
-        info = {"playerNo": playerNo}
-        score_before = self.t.players[playerNo].score
-
-        aval_actions = self.t.get_self_actions()
-        if aval_actions[action].action == mp.Action.Tsumo or aval_actions[action].action == mp.Action.KyuShuKyuHai:
-            self.horas[playerNo] = True
-
-        self.t.make_selection(action)
-
-        if self.t.get_selected_action() == mp.Action.Play:
-            self.played_a_tile[playerNo] = True
-
-        new_state = self.get_state_(playerNo)
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            reward = self.get_final_score_change()[playerNo]
-        else:
-            reward = self.t.players[playerNo].score - score_before
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            done = 1
-            self.final_score_changes.append(self.get_final_score_change())
-
-        else:
-            done = 0
-
-        for i in range(4):
-            self.scores_before[i] = self.t.players[i].score
-
-        return new_state, reward, done, info
-
-    def step_response(self, action: int, playerNo: int):
-        # response phase
-
-        current_playerNo = self.t.who_make_selection()
-
-        if not self.t.get_phase() >= 4 and not self.t.get_phase == 16:
-            raise Exception("Current phase is not response phase!!")
-        if not current_playerNo == playerNo:
-            raise Exception("Current player is not the one neesd to execute action!!")
-
-        info = {"playerNo": playerNo}
-        score_before = self.t.players[playerNo].score
-
-        aval_actions = self.t.get_response_actions()
-
-        if aval_actions[action].action == mp.Action.Ron or aval_actions[action].action == mp.Action.ChanKan or \
-                aval_actions[action].action == mp.Action.ChanAnKan:
-            self.horas[playerNo] = True
-
-        self.t.make_selection(action)
-
-        self.played_a_tile[playerNo] = False
-        new_state = self.get_state_(playerNo)
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            reward = self.get_final_score_change()[playerNo]
-        else:
-            reward = self.t.players[playerNo].score - score_before
-
-        if self.Phases[self.t.get_phase()] == "GAME_OVER":
-            done = 1
-            self.final_score_changes.append(self.get_final_score_change())
-        else:
-            done = 0
-
-        for i in range(4):
-            self.scores_before[i] = self.t.players[i].score
-
-        return new_state, reward, done, info
-
-    def get_final_score_change(self):
-        rewards = np.zeros([4], dtype=np.float32)
-
-        for i in range(4):
-            rewards[i] = self.t.get_result().score[i] - self.scores_before[i]
-
-        return rewards
-
-    def get_state_(self, playerNo):
-        return 0
-
-    def symmetric_matrix_features(self, matrix_features):
-        """
-        Generating a random alternative of features, which is symmetric to the original one
-        !!!! Exception !!!! Green one color!!!
-        :param hand_matrix_tensor: a B by 34 by 4 matrix, where B is batch_size
-        :return: a new, symmetric matrix
-        """
-        perm_msp = np.random.permutation(3)
-
-        matrix_features_new = np.zeros_like(matrix_features)
-
-        ## msp
-        tmp = []
-
-        tmp.append(matrix_features[:, 0:9, :])
-        tmp.append(matrix_features[:, 9:18, :])
-        tmp.append(matrix_features[:, 18:27, :])
-
-        matrix_features_new[:, 0:9, :] = tmp[perm_msp[0]]
-        matrix_features_new[:, 9:18, :] = tmp[perm_msp[1]]
-        matrix_features_new[:, 18:27, :] = tmp[perm_msp[2]]
-
-        ## eswn
-        tmp = []
-
-        tmp.append(matrix_features[:, 27, :])
-        tmp.append(matrix_features[:, 28, :])
-        tmp.append(matrix_features[:, 29, :])
-        tmp.append(matrix_features[:, 30, :])
-
-        k = np.random.random_integers(0, 3)
-
-        matrix_features_new[:, 27, :] = tmp[k % 4]
-        matrix_features_new[:, 28, :] = tmp[(k + 1) % 4]
-        matrix_features_new[:, 29, :] = tmp[(k + 2) % 4]
-        matrix_features_new[:, 30, :] = tmp[(k + 3) % 4]
-
-        # chh
-        tmp = []
-
-        k = np.random.random_integers(0, 2)
-
-        tmp.append(matrix_features[:, 31, :])
-        tmp.append(matrix_features[:, 32, :])
-        tmp.append(matrix_features[:, 33, :])
-
-        matrix_features_new[:, 31, :] = tmp[k % 3]
-        matrix_features_new[:, 32, :] = tmp[(k + 1) % 3]
-        matrix_features_new[:, 33, :] = tmp[(k + 2) % 3]
-
-        return matrix_features_new
-
-    def get_aval_next_states(self, playerNo: int):
-
-        current_playerNo = self.t.who_make_selection()
-        if not current_playerNo == playerNo:
-            raise Exception("Current player is not the one needs to execute action!!")
-
-        S0 = self.t.get_next_aval_states_matrix_features_frost2(playerNo)
-        s0 = self.t.get_next_aval_states_vector_features_frost2(playerNo)
-        matrix_features = np.array(S0).reshape([-1, *self.matrix_feature_size])
-        vector_features = np.array(s0).reshape([-1, self.vector_feature_size])
-
-        return matrix_features, vector_features
-
-    def tile_to_id(self, tile):
-        # if tile == mp.BaseTile._1m:
-        #     return 0
-        # elif tile == mp.BaseTile._2m:
-        #     return 1
-        # elif tile == mp.BaseTile._3m:
-        #     return 2
-        # elif tile == mp.BaseTile._4m:
-        #     return 3
-        # elif tile == mp.BaseTile._5m:
-        #     return 4
-        # elif tile == mp.BaseTile._6m:
-        #     return 5
-        # elif tile == mp.BaseTile._7m:
-        #     return 6
-        # elif tile == mp.BaseTile._8m:
-        #     return 7
-        # elif tile == mp.BaseTile._9m:
-        #     return 8
-        # elif tile == mp.BaseTile._1p:
-        #     return 9
-        # elif tile == mp.BaseTile._2p:
-        #     return 10
-        # elif tile == mp.BaseTile._3p:
-        #     return 11
-        # elif tile == mp.BaseTile._4p:
-        #     return 12
-        # elif tile == mp.BaseTile._5p:
-        #     return 13
-        # elif tile == mp.BaseTile._6p:
-        #     return 14
-        # elif tile == mp.BaseTile._7p:
-        #     return 15
-        # elif tile == mp.BaseTile._8p:
-        #     return 16
-        # elif tile == mp.BaseTile._9p:
-        #     return 17
-        # elif tile == mp.BaseTile._1s:
-        #     return 18
-        # elif tile == mp.BaseTile._2s:
-        #     return 19
-        # elif tile == mp.BaseTile._3s:
-        #     return 20
-        # elif tile == mp.BaseTile._4s:
-        #     return 21
-        # elif tile == mp.BaseTile._5s:
-        #     return 22
-        # elif tile == mp.BaseTile._6s:
-        #     return 23
-        # elif tile == mp.BaseTile._7s:
-        #     return 24
-        # elif tile == mp.BaseTile._8s:
-        #     return 25
-        # elif tile == mp.BaseTile._9s:
-        #     return 26
-        # elif tile == mp.BaseTile.east:
-        #     return 27
-        # elif tile == mp.BaseTile.south:
-        #     return 28
-        # elif tile == mp.BaseTile.west:
-        #     return 29
-        # elif tile == mp.BaseTile.north:
-        #     return 30
-        # elif tile == mp.BaseTile.haku:
-        #     return 31
-        # elif tile == mp.BaseTile.hatsu:
-        #     return 32
-        # elif tile == mp.BaseTile.chu:
-        #     return 33
-        # else:
-        #     raise Exception("Input must be a tile!!")
-        return int(tile)
-
-    def dora_ind_2_dora_id(self, ind_id):
-        if ind_id == 8:
-            return 0
-        elif ind_id == 8 + 9:
-            return 0 + 9
-        elif ind_id == 8 + 9 + 9:
-            return 0 + 9 + 9
-        elif ind_id == 33:
-            return 31
-        else:
-            return ind_id + 1
-
-    def who_do_what(self):
-        if self.t.get_phase() >= 4 and not self.t.get_phase() == 16:  # response phase
-            return self.t.who_make_selection(), "response"
-        elif self.t.get_phase() < 4:  # action phase
-            return self.t.who_make_selection(), "play"
-
-    def render(self, mode='human'):
-        print(self.t.get_selected_action.action)
+# class EnvMahjong2(gym.Env):
+#     """
+#     Mahjong Environment for FrOst Ver2
+#     """
+#
+#     metadata = {'name': 'Mahjong', 'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
+#     spec = {'id': 'TaskT'}
+#
+#     def __init__(self, printing=True):
+#         self.t = mp.Table()
+#         self.Phases = (
+#             "P1_ACTION", "P2_ACTION", "P3_ACTION", "P4_ACTION", "P1_RESPONSE", "P2_RESPONSE", "P3_RESPONSE",
+#             "P4_RESPONSE", "P1_抢杠RESPONSE", "P2_抢杠RESPONSE", "P3_抢杠RESPONSE", "P4_抢杠RESPONSE",
+#             "P1_抢暗杠RESPONSE", "P2_抢暗杠RESPONSE", " P3_抢暗杠RESPONSE", " P4_抢暗杠RESPONSE", "GAME_OVER",
+#             "P1_DRAW, P2_DRAW, P3_DRAW, P4_DRAW")
+#         self.horas = [False, False, False, False]
+#         self.played_a_tile = [False, False, False, False]
+#         self.tile_in_air = None
+#         self.final_score_changes = []
+#         self.game_count = 0
+#         self.printing = printing
+#
+#         self.matrix_feature_size = [34, 58]
+#         self.vector_feature_size = 30
+#
+#         self.scores_init = np.zeros([4], dtype=np.float32)
+#         for i in range(4):
+#             self.scores_init[i] = self.t.players[i].score
+#
+#         self.scores_before = np.zeros([4], dtype=np.float32)
+#         for i in range(4):
+#             self.scores_before[i] = self.t.players[i].score
+#
+#     def reset(self):
+#         self.t = mp.Table()
+#
+#         oya = np.random.random_integers(0, 3)
+#         winds = ['east', 'south', 'west', 'north']
+#         wind = winds[np.random.random_integers(0, 3)]
+#         oya = '{}'.format(oya)
+#
+#         # self.t.game_init()
+#         self.t.game_init_with_metadata({"oya": oya, "wind": wind})
+#
+#         self.game_count += 1
+#
+#         self.horas = [False, False, False, False]
+#         self.played_a_tile = [False, False, False, False]
+#
+#         self.scores_init = np.zeros([4], dtype=np.float32)
+#         for i in range(4):
+#             self.scores_init[i] = self.t.players[i].score
+#
+#         self.scores_before = np.zeros([4], dtype=np.float32)
+#         for i in range(4):
+#             self.scores_before[i] = self.t.players[i].score
+#
+#         return [self.get_state_(i) for i in range(4)]
+#
+#     def get_phase_text(self):
+#         return self.Phases[self.t.get_phase()]
+#
+#     # def step_draw(self, playerNo):
+#     #     current_playerNo = self.t.who_make_selection()
+#     #
+#     #     if not self.t.get_phase() < 4:
+#     #         raise Exception("Current phase is not draw phase!!")
+#     #     if not current_playerNo == playerNo:
+#     #         raise Exception("Current player is not the one neesd to execute action!!")
+#     #
+#     #     info = {"playerNo": playerNo}
+#     #     score_before = self.t.players[playerNo].score
+#     #
+#     #     self.played_a_tile[playerNo] = False
+#     #     new_state = self.get_state_(playerNo)
+#     #
+#     #     # the following should be unnecessary but OK
+#     #     if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#     #         reward = self.get_final_score_change()[playerNo]
+#     #     else:
+#     #         reward = self.t.players[playerNo].score - score_before
+#     #
+#     #     if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#     #         done = 1
+#     #         self.final_score_changes.append(self.get_final_score_change())
+#     #     else:
+#     #         done = 0
+#     #
+#     #     for i in range(4):
+#     #         self.scores_before[i] = self.t.players[i].score
+#     #
+#     #     return new_state, reward, done, info
+#
+#     def step_play(self, action, playerNo):
+#         # self action phase
+#         current_playerNo = self.t.who_make_selection()
+#
+#         if not self.t.get_phase() < 4:
+#             raise Exception("Current phase is not self-action phase!!")
+#         if not current_playerNo == playerNo:
+#             raise Exception("Current player is not the one neesd to execute action!!")
+#
+#         info = {"playerNo": playerNo}
+#         score_before = self.t.players[playerNo].score
+#
+#         aval_actions = self.t.get_self_actions()
+#         if aval_actions[action].action == mp.Action.Tsumo or aval_actions[action].action == mp.Action.KyuShuKyuHai:
+#             self.horas[playerNo] = True
+#
+#         self.t.make_selection(action)
+#
+#         if self.t.get_selected_action() == mp.Action.Play:
+#             self.played_a_tile[playerNo] = True
+#
+#         new_state = self.get_state_(playerNo)
+#
+#         if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#             reward = self.get_final_score_change()[playerNo]
+#         else:
+#             reward = self.t.players[playerNo].score - score_before
+#
+#         if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#             done = 1
+#             self.final_score_changes.append(self.get_final_score_change())
+#
+#         else:
+#             done = 0
+#
+#         for i in range(4):
+#             self.scores_before[i] = self.t.players[i].score
+#
+#         return new_state, reward, done, info
+#
+#     def step_response(self, action: int, playerNo: int):
+#         # response phase
+#
+#         current_playerNo = self.t.who_make_selection()
+#
+#         if not self.t.get_phase() >= 4 and not self.t.get_phase == 16:
+#             raise Exception("Current phase is not response phase!!")
+#         if not current_playerNo == playerNo:
+#             raise Exception("Current player is not the one neesd to execute action!!")
+#
+#         info = {"playerNo": playerNo}
+#         score_before = self.t.players[playerNo].score
+#
+#         aval_actions = self.t.get_response_actions()
+#
+#         if aval_actions[action].action == mp.Action.Ron or aval_actions[action].action == mp.Action.ChanKan or \
+#                 aval_actions[action].action == mp.Action.ChanAnKan:
+#             self.horas[playerNo] = True
+#
+#         self.t.make_selection(action)
+#
+#         self.played_a_tile[playerNo] = False
+#         new_state = self.get_state_(playerNo)
+#
+#         if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#             reward = self.get_final_score_change()[playerNo]
+#         else:
+#             reward = self.t.players[playerNo].score - score_before
+#
+#         if self.Phases[self.t.get_phase()] == "GAME_OVER":
+#             done = 1
+#             self.final_score_changes.append(self.get_final_score_change())
+#         else:
+#             done = 0
+#
+#         for i in range(4):
+#             self.scores_before[i] = self.t.players[i].score
+#
+#         return new_state, reward, done, info
+#
+#     def get_final_score_change(self):
+#         rewards = np.zeros([4], dtype=np.float32)
+#
+#         for i in range(4):
+#             rewards[i] = self.t.get_result().score[i] - self.scores_before[i]
+#
+#         return rewards
+#
+#     def get_state_(self, playerNo):
+#         return 0
+#
+#     def symmetric_matrix_features(self, matrix_features):
+#         """
+#         Generating a random alternative of features, which is symmetric to the original one
+#         !!!! Exception !!!! Green one color!!!
+#         :param hand_matrix_tensor: a B by 34 by 4 matrix, where B is batch_size
+#         :return: a new, symmetric matrix
+#         """
+#         perm_msp = np.random.permutation(3)
+#
+#         matrix_features_new = np.zeros_like(matrix_features)
+#
+#         ## msp
+#         tmp = []
+#
+#         tmp.append(matrix_features[:, 0:9, :])
+#         tmp.append(matrix_features[:, 9:18, :])
+#         tmp.append(matrix_features[:, 18:27, :])
+#
+#         matrix_features_new[:, 0:9, :] = tmp[perm_msp[0]]
+#         matrix_features_new[:, 9:18, :] = tmp[perm_msp[1]]
+#         matrix_features_new[:, 18:27, :] = tmp[perm_msp[2]]
+#
+#         ## eswn
+#         tmp = []
+#
+#         tmp.append(matrix_features[:, 27, :])
+#         tmp.append(matrix_features[:, 28, :])
+#         tmp.append(matrix_features[:, 29, :])
+#         tmp.append(matrix_features[:, 30, :])
+#
+#         k = np.random.random_integers(0, 3)
+#
+#         matrix_features_new[:, 27, :] = tmp[k % 4]
+#         matrix_features_new[:, 28, :] = tmp[(k + 1) % 4]
+#         matrix_features_new[:, 29, :] = tmp[(k + 2) % 4]
+#         matrix_features_new[:, 30, :] = tmp[(k + 3) % 4]
+#
+#         # chh
+#         tmp = []
+#
+#         k = np.random.random_integers(0, 2)
+#
+#         tmp.append(matrix_features[:, 31, :])
+#         tmp.append(matrix_features[:, 32, :])
+#         tmp.append(matrix_features[:, 33, :])
+#
+#         matrix_features_new[:, 31, :] = tmp[k % 3]
+#         matrix_features_new[:, 32, :] = tmp[(k + 1) % 3]
+#         matrix_features_new[:, 33, :] = tmp[(k + 2) % 3]
+#
+#         return matrix_features_new
+#
+#     def get_aval_next_states(self, playerNo: int):
+#
+#         current_playerNo = self.t.who_make_selection()
+#         if not current_playerNo == playerNo:
+#             raise Exception("Current player is not the one needs to execute action!!")
+#
+#         S0 = self.t.get_next_aval_states_matrix_features_frost2(playerNo)
+#         s0 = self.t.get_next_aval_states_vector_features_frost2(playerNo)
+#         matrix_features = np.array(S0).reshape([-1, *self.matrix_feature_size])
+#         vector_features = np.array(s0).reshape([-1, self.vector_feature_size])
+#
+#         return matrix_features, vector_features
+#
+#     def tile_to_id(self, tile):
+#         # if tile == mp.BaseTile._1m:
+#         #     return 0
+#         # elif tile == mp.BaseTile._2m:
+#         #     return 1
+#         # elif tile == mp.BaseTile._3m:
+#         #     return 2
+#         # elif tile == mp.BaseTile._4m:
+#         #     return 3
+#         # elif tile == mp.BaseTile._5m:
+#         #     return 4
+#         # elif tile == mp.BaseTile._6m:
+#         #     return 5
+#         # elif tile == mp.BaseTile._7m:
+#         #     return 6
+#         # elif tile == mp.BaseTile._8m:
+#         #     return 7
+#         # elif tile == mp.BaseTile._9m:
+#         #     return 8
+#         # elif tile == mp.BaseTile._1p:
+#         #     return 9
+#         # elif tile == mp.BaseTile._2p:
+#         #     return 10
+#         # elif tile == mp.BaseTile._3p:
+#         #     return 11
+#         # elif tile == mp.BaseTile._4p:
+#         #     return 12
+#         # elif tile == mp.BaseTile._5p:
+#         #     return 13
+#         # elif tile == mp.BaseTile._6p:
+#         #     return 14
+#         # elif tile == mp.BaseTile._7p:
+#         #     return 15
+#         # elif tile == mp.BaseTile._8p:
+#         #     return 16
+#         # elif tile == mp.BaseTile._9p:
+#         #     return 17
+#         # elif tile == mp.BaseTile._1s:
+#         #     return 18
+#         # elif tile == mp.BaseTile._2s:
+#         #     return 19
+#         # elif tile == mp.BaseTile._3s:
+#         #     return 20
+#         # elif tile == mp.BaseTile._4s:
+#         #     return 21
+#         # elif tile == mp.BaseTile._5s:
+#         #     return 22
+#         # elif tile == mp.BaseTile._6s:
+#         #     return 23
+#         # elif tile == mp.BaseTile._7s:
+#         #     return 24
+#         # elif tile == mp.BaseTile._8s:
+#         #     return 25
+#         # elif tile == mp.BaseTile._9s:
+#         #     return 26
+#         # elif tile == mp.BaseTile.east:
+#         #     return 27
+#         # elif tile == mp.BaseTile.south:
+#         #     return 28
+#         # elif tile == mp.BaseTile.west:
+#         #     return 29
+#         # elif tile == mp.BaseTile.north:
+#         #     return 30
+#         # elif tile == mp.BaseTile.haku:
+#         #     return 31
+#         # elif tile == mp.BaseTile.hatsu:
+#         #     return 32
+#         # elif tile == mp.BaseTile.chu:
+#         #     return 33
+#         # else:
+#         #     raise Exception("Input must be a tile!!")
+#         return int(tile)
+#
+#     def dora_ind_2_dora_id(self, ind_id):
+#         if ind_id == 8:
+#             return 0
+#         elif ind_id == 8 + 9:
+#             return 0 + 9
+#         elif ind_id == 8 + 9 + 9:
+#             return 0 + 9 + 9
+#         elif ind_id == 33:
+#             return 31
+#         else:
+#             return ind_id + 1
+#
+#     def who_do_what(self):
+#         if self.t.get_phase() >= 4 and not self.t.get_phase() == 16:  # response phase
+#             return self.t.who_make_selection(), "response"
+#         elif self.t.get_phase() < 4:  # action phase
+#             return self.t.who_make_selection(), "play"
+#
+#     def render(self, mode='human'):
+#         print(self.t.get_selected_action.action)
