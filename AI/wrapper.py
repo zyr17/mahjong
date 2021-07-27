@@ -6,6 +6,11 @@ from copy import deepcopy
 import gym
 import MahjongPy as mp
 
+from mahjong.shanten import Shanten
+from mahjong.tile import TilesConverter
+
+shanten = Shanten()
+
 from gym.spaces import Discrete, Box
 
 player_i_hand_start_ind = [0, 63, 69, 75]  # later 3 in oracle_obs
@@ -446,6 +451,8 @@ class EnvMahjong3(gym.Env):
 
     def step(self, player_id, action, raw_action=False):
         who, what = self.who_do_what()
+
+        self.prev_step_is_naru = False  # to make latest_tiles available
 
         # if self.latest_tile is not None:
         #     assert int(self.latest_tile / 4) == int(self.t.get_selected_action_tile().tile)
@@ -927,59 +934,31 @@ class EnvMahjong3(gym.Env):
         for i in range(4):
             rewards[i] = self.t.get_result().score[i] - self.scores_before[i]
 
+        shanten_num = np.zeros([4])
+        if self.t.get_remain_tile() == 0 and np.max(rewards) == 0:  # 荒牌流局 计算罚符
+
+            for pid in range(4):
+                shanten_num[pid] = shanten.calculate_shanten(TilesConverter.to_34_array(
+                    self.hand_tiles[pid] + [st[0] for st in self.side_tiles[pid]]))
+
+            tenpais = np.argwhere(shanten_num == 0)
+
+            if len(tenpais) == 0 or len(tenpais) == 4:
+                pass
+            elif len(tenpais) == 1:
+                for k in range(4):
+                    rewards[k] = 3000 if k == tenpais[0][0] else -1000
+
+            elif len(tenpais) == 2:
+                for k in range(4):
+                    rewards[k] = 1500 if k in [tenpais[0][0], tenpais[1][0]] else -1500
+
+            elif len(tenpais) == 3:
+                for k in range(4):
+                    rewards[k] = 1000 if k in [tenpais[0][0], tenpais[1][0], tenpais[2][0]] else -3000
+            # print("荒牌流局, 向听数:", shanten_num)
+
         return rewards
-
-    def symmetric_matrix_features(self, matrix_features):
-        """
-        Generating a random alternative of features, which is symmetric to the original one
-        !!!! Exception !!!! Green one color!!!
-        :param hand_matrix_tensor: a B by 34 by 4 matrix, where B is batch_size
-        :return: a new, symmetric matrix
-        """
-        perm_msp = np.random.permutation(3)
-
-        matrix_features_new = np.zeros_like(matrix_features)
-
-        ## msp
-        tmp = []
-
-        tmp.append(matrix_features[:, 0:9, :])
-        tmp.append(matrix_features[:, 9:18, :])
-        tmp.append(matrix_features[:, 18:27, :])
-
-        matrix_features_new[:, 0:9, :] = tmp[perm_msp[0]]
-        matrix_features_new[:, 9:18, :] = tmp[perm_msp[1]]
-        matrix_features_new[:, 18:27, :] = tmp[perm_msp[2]]
-
-        ## eswn
-        tmp = []
-
-        tmp.append(matrix_features[:, 27, :])
-        tmp.append(matrix_features[:, 28, :])
-        tmp.append(matrix_features[:, 29, :])
-        tmp.append(matrix_features[:, 30, :])
-
-        k = np.random.random_integers(0, 3)
-
-        matrix_features_new[:, 27, :] = tmp[k % 4]
-        matrix_features_new[:, 28, :] = tmp[(k + 1) % 4]
-        matrix_features_new[:, 29, :] = tmp[(k + 2) % 4]
-        matrix_features_new[:, 30, :] = tmp[(k + 3) % 4]
-
-        # chh
-        tmp = []
-
-        k = np.random.random_integers(0, 2)
-
-        tmp.append(matrix_features[:, 31, :])
-        tmp.append(matrix_features[:, 32, :])
-        tmp.append(matrix_features[:, 33, :])
-
-        matrix_features_new[:, 31, :] = tmp[k % 3]
-        matrix_features_new[:, 32, :] = tmp[(k + 1) % 3]
-        matrix_features_new[:, 33, :] = tmp[(k + 2) % 3]
-
-        return matrix_features_new
 
     def get_aval_next_states(self, playerNo: int):
 
