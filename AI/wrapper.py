@@ -102,7 +102,7 @@ def is_consecutive(a: int, b: int, c: int):
     return array[1] - array[0] == 1 and array[2] - array[1] == 1
 
 
-def generate_obs(player_id, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
+def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
 
     all_obs_0p = np.zeros([34, 63 + 18], dtype=np.uint8)
 
@@ -177,7 +177,7 @@ def generate_obs(player_id, hand_tiles, river_tiles, side_tiles, dora_tiles, gam
             # how many times this tile has been discarded before by this player
             all_obs_0p[hand_tile_id, player_i_hand_start_ind[player_id] + 4] = (np.sum(
                 all_obs_0p[hand_tile_id,
-                player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])) > 0
+                    player_i_river_start_ind[player_id]:player_i_river_start_ind[player_id] + 4])) > 0
 
         for t_id in range(34):
             for k in range(4):
@@ -201,25 +201,34 @@ def generate_obs(player_id, hand_tiles, river_tiles, side_tiles, dora_tiles, gam
     # players_obs = all_obs_0p[:, :63]
     # oracles_obs = all_obs_0p[:, 63:]
 
-    k = player_id
 
-    all_obs_kp = deepcopy(all_obs_0p)
-
-    # self-wind given by the input
-
-    all_obs_kp[:, :6] = all_obs_0p[:, player_i_hand_start_ind[k]:player_i_hand_start_ind[k] + 6]
-
-    all_obs_kp[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]] = shift(
-        all_obs_0p[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]],
-        player_i_side_start_ind[k] - player_i_side_start_ind[0])
-
-    all_obs_kp[:, player_i_river_start_ind[0]:dora_indicator_ind] = shift(
-        all_obs_0p[:, player_i_river_start_ind[0]:dora_indicator_ind],
-        player_i_river_start_ind[k] - player_i_river_start_ind[0])
-
-    if player_id == 0:
+    if playerNo == 0:
         return all_obs_0p
     else:
+        k = playerNo
+
+        all_obs_kp = deepcopy(all_obs_0p)
+
+        # self-wind given by the input
+
+        hand_indices_obs = np.concatenate([all_obs_0p[:, :player_i_side_start_ind[0]],
+                                           all_obs_0p[:, player_i_hand_start_ind[1]:]], axis=-1)
+        hand_indices_obs_playerk = shift(hand_indices_obs, player_i_hand_start_ind[2] - player_i_hand_start_ind[1])
+
+        all_obs_kp[:, :player_i_side_start_ind[0]] = hand_indices_obs_playerk[:, :player_i_side_start_ind[0]]
+
+        all_obs_kp[:, player_i_hand_start_ind[1]:] = hand_indices_obs_playerk[:, player_i_side_start_ind[0]:]
+
+        all_obs_kp[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]] = shift(
+            all_obs_0p[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]],
+            player_i_side_start_ind[k] - player_i_side_start_ind[0])
+
+        all_obs_kp[:, player_i_river_start_ind[0]:dora_indicator_ind] = shift(
+            all_obs_0p[:, player_i_river_start_ind[0]:dora_indicator_ind],
+            player_i_river_start_ind[k] - player_i_river_start_ind[0])
+
+        all_obs_kp[:, :6] = all_obs_0p[:, player_i_hand_start_ind[k]:player_i_hand_start_ind[k] + 6]
+
         return all_obs_kp
 
 
