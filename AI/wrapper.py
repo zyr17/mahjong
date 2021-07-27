@@ -44,6 +44,16 @@ UNICODE_TILES = """
 """.split()
 
 
+def shift(matrix, n):
+
+    tmp = deepcopy(matrix)
+
+    matrix[:, :-n] = tmp[:, n:]
+    matrix[:, -n:] = tmp[:, :n]
+
+    return matrix
+
+
 def TileTo136(Tile):
     if Tile.red_dora:
         return int(Tile.tile) * 4
@@ -87,7 +97,7 @@ def is_consecutive(a: int, b: int, c: int):
     return array[1] - array[0] == 1 and array[2] - array[1] == 1
 
 
-def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
+def generate_obs(player_id, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
 
     all_obs_0p = np.zeros([34, 63 + 18], dtype=np.uint8)
 
@@ -186,7 +196,26 @@ def generate_obs(hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, sel
     # players_obs = all_obs_0p[:, :63]
     # oracles_obs = all_obs_0p[:, 63:]
 
-    return all_obs_0p
+    k = player_id
+
+    all_obs_kp = deepcopy(all_obs_0p)
+
+    # self-wind given by the input
+
+    all_obs_kp[:, :6] = all_obs_0p[:, player_i_hand_start_ind[k]:player_i_hand_start_ind[k] + 6]
+
+    all_obs_kp[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]] = shift(
+        all_obs_0p[:, player_i_side_start_ind[0]:player_i_river_start_ind[0]],
+        player_i_side_start_ind[k] - player_i_side_start_ind[0])
+
+    all_obs_kp[:, player_i_river_start_ind[0]:dora_indicator_ind] = shift(
+        all_obs_0p[:, player_i_river_start_ind[0]:dora_indicator_ind],
+        player_i_river_start_ind[k] - player_i_river_start_ind[0])
+
+    if player_id == 0:
+        return all_obs_0p
+    else:
+        return all_obs_kp
 
 
 class EnvMahjong3(gym.Env):
@@ -291,6 +320,7 @@ class EnvMahjong3(gym.Env):
         self.riichi_tile_id = -1
         self.curr_valid_actions = []
         self.non_valid_discard_tiles_id = [[], [], [], []]
+        self.ron_tile = None
 
         return self.get_obs(who)
 
@@ -309,7 +339,7 @@ class EnvMahjong3(gym.Env):
             else:
                 for act in aval_actions:
                     if act.action == mp.Action.Play:
-                        self.curr_valid_actions.append(int(act.correspond_tiles[0].tile))
+                        self.curr_valid_actions.append(int(act.correspond_tiles[0].tile))  # considered shiti
                     elif act.action == mp.Action.Ankan:
                         self.curr_valid_actions.append(ANKAN)
                     elif act.action == mp.Action.Kakan:
@@ -356,7 +386,6 @@ class EnvMahjong3(gym.Env):
 
         self.curr_valid_actions = list(set(self.curr_valid_actions))
 
-        # TODO: shiti!!!!!
 
         # ## Note that the curr_valid_action are ordered, corresonding to self.t.get_aval_next_states()
         #
@@ -450,11 +479,10 @@ class EnvMahjong3(gym.Env):
 
         self.update_hand_and_latest_tiles()
 
-        # TODO: each player curr_all_obs
         player_wind_obs = np.zeros([34])
-        player_wind_obs[27 + (8 - self.oya_id - player_id) % 4] = 1
+        player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
 
-        self.curr_all_obs[player_id] = generate_obs(
+        self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
             self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
             prev_step_is_naru=self.prev_step_is_naru)
@@ -465,11 +493,10 @@ class EnvMahjong3(gym.Env):
 
         self.update_hand_and_latest_tiles()
 
-        # TODO: each player curr_all_obs
         player_wind_obs = np.zeros([34])
-        player_wind_obs[27 + (8 - self.oya_id - player_id) % 4] = 1
+        player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
 
-        self.curr_all_obs[player_id] = generate_obs(
+        self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
             self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
             prev_step_is_naru=self.prev_step_is_naru)
@@ -509,7 +536,8 @@ class EnvMahjong3(gym.Env):
             if self.t.get_phase() < 4:
                 self.latest_tile = self.hand_tiles[playerNo][-1]
         else:
-            print("This game already ended!")
+            pass
+            # print("This game has ended!")
 
         # if len(self.hand_tiles[playerNo]) - len(old_hand_tiles_player) == -1:  # just discard a tile
         #     if self.t.get_selected_action_tile().red_dora:
@@ -649,6 +677,8 @@ class EnvMahjong3(gym.Env):
                 reward = self.get_final_score_change()[playerNo] / self.reward_unit
             else:
                 reward = (self.t.players[playerNo].score - score_before) / self.reward_unit
+                if riichi:
+                    reward -= 1000 / self.reward_unit
 
             if self.Phases[self.t.get_phase()] == "GAME_OVER":
                 done = 1
@@ -731,17 +761,14 @@ class EnvMahjong3(gym.Env):
                     self.hand_tiles[playerNo].remove(hh)
 
                 self.prev_step_is_naru = True
-                # TODO: After Naru, latest_tile = None!!!
             else:
                 raise ValueError
-
-        # TODO: curr_valid_actions
 
         return self.get_obs(playerNo), reward, done, info
 
     def step_response(self, action: int, playerNo: int):
         # response phase
-        # TODO: action now is an int from 0 to 45
+        # action now is an int from 0 to 45
 
         # -------------------- update latest tile for drawing a tile ----------
         self.update_hand_and_latest_tiles()
@@ -771,13 +798,11 @@ class EnvMahjong3(gym.Env):
             warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             if self.t.get_selected_action_tile().red_dora:
-                ron_tile = int(self.t.get_selected_action_tile().tile) * 4
+                self.ron_tile = int(self.t.get_selected_action_tile().tile) * 4
             else:
-                ron_tile = int(self.t.get_selected_action_tile().tile) * 4 + 3
-            self.hand_tiles[playerNo].append(ron_tile)
+                self.ron_tile = int(self.t.get_selected_action_tile().tile) * 4 + 3
+            self.hand_tiles[playerNo].append(self.ron_tile)
         else:
-            # TODO: chi, pon, kan or noop; after Naru, latest_tile becomes None
-
             if action == PON:
                 desired_action_type = mp.Action.Pon
             elif action == MINKAN:
