@@ -80,9 +80,6 @@ for game in range(1000):
     sp = env_test.reset(0, 'east')
 
     for tt in range(max_steps):
-        
-        curr_pid = env_test.get_curr_player_id()
-        valid_actions = env_test.get_valid_actions(nhot=False)
 
 #         if curr_pid != 0:
 #             a = valid_actions[np.random.randint(len(valid_actions))]
@@ -94,29 +91,35 @@ for game in range(1000):
         #             env_test.hand_tiles[pid] + [st[0] for st in env_test.side_tiles[pid]]))
         #     print("向听数:", shanten_num)
 
+        valid_actions = env_test.get_valid_actions(nhot=False)
+
         if len(valid_actions) == 1:
-            a = valid_actions[0]
+            env_test.t.make_selection(0)
+
         else:
+            curr_pid = env_test.get_curr_player_id()
+
             action_mask = env_test.get_valid_actions(nhot=True)
+
             if not full_obs:
                 a = agents_test[curr_pid].select(env_test.get_obs(curr_pid), action_mask, greedy=True)
             else:
                 a = agents_test[curr_pid].select(env_test.get_full_obs(curr_pid), action_mask, greedy=True)
 
-#         if curr_pid == 0 and len(valid_actions) > 1 and a > 40 and a < 45:
-#             print("-------------- Step {}, player {} ----------------".format(tt, curr_pid))
-#             print(env_test.Phases[env_test.t.get_phase()], "Recent Tile:", to_unicode_tails([env_test.latest_tile]))
-#             side_tiles_0 = [st[0] for st in env_test.side_tiles[curr_pid]]
-#             print("手牌: ", to_unicode_tails(env_test.hand_tiles[curr_pid]),
-#                   "； 副露：", to_unicode_tails(side_tiles_0))
-#             if a < 34:
-#                 agent_selection_str = UNICODE_TILES[a]
-#             else:
-#                 agent_selection_str = EXPLAINS[a]
+            if curr_pid == 0 and len(valid_actions) > 1 and a > 40 and a < 45:
+                print("-------------- Step {}, player {} ----------------".format(tt, curr_pid))
+                print(env_test.Phases[env_test.t.get_phase()], "Recent Tile:", to_unicode_tails([env_test.latest_tile]))
+                side_tiles_0 = [st[0] for st in env_test.side_tiles[curr_pid]]
+                print("手牌: ", to_unicode_tails(env_test.hand_tiles[curr_pid]),
+                      "； 副露：", to_unicode_tails(side_tiles_0))
+                if a < 34:
+                    agent_selection_str = UNICODE_TILES[a]
+                else:
+                    agent_selection_str = EXPLAINS[a]
 
-#             print("Agent选择打: ", agent_selection_str)
-        
-        sp, r, done, _ = env_test.step(curr_pid, a)
+                print("Agent选择打: ", agent_selection_str)
+
+            sp, r, done, _ = env_test.step(curr_pid, a)
 
         steps_taken += 1
 

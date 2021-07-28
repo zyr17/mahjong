@@ -1,5 +1,6 @@
 import platform
 import warnings
+import time
 
 import numpy as np
 from copy import deepcopy
@@ -340,6 +341,8 @@ class EnvMahjong3(gym.Env):
 
     def get_valid_actions(self, nhot=True):
 
+        # gva_time = time.time()
+
         self.update_hand_and_latest_tiles()
 
         self.curr_valid_actions = []
@@ -347,6 +350,10 @@ class EnvMahjong3(gym.Env):
         phase = self.t.get_phase()
         if phase < 4:
             aval_actions = self.t.get_self_actions()
+
+            # if len(aval_actions) == 1:
+            #     print(aval_actions[0].action)
+
             if self.is_deciding_riichi:
                 self.curr_valid_actions += [RIICHI, NOOP]
 
@@ -368,33 +375,37 @@ class EnvMahjong3(gym.Env):
 
         elif phase < 16:
             aval_actions = self.t.get_response_actions()
-            for act in aval_actions:
-                if act.action == mp.Action.Pon:
-                    self.curr_valid_actions.append(PON)
-                elif act.action == mp.Action.Kan:
-                    self.curr_valid_actions.append(MINKAN)
-                elif act.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
-                    self.curr_valid_actions.append(RON)
-                elif act.action == mp.Action.Pass:
-                    self.curr_valid_actions.append(NOOP)
-                elif act.action == mp.Action.Chi:
-                    chi_parents_tiles = act.correspond_tiles
-                    if is_consecutive(int(self.latest_tile / 4), int(chi_parents_tiles[0].tile),
-                                      int(chi_parents_tiles[1].tile)):
-                        chi_side = CHILEFT
-                    elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.latest_tile / 4),
-                                        int(chi_parents_tiles[1].tile)):
-                        chi_side = CHIMIDDLE
-                    elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile),
-                                        int(self.latest_tile / 4)):
-                        chi_side = CHIRIGHT
+
+            if len(aval_actions) == 1:
+                self.curr_valid_actions = [NOOP]
+            else:
+                for act in aval_actions:
+                    if act.action == mp.Action.Pon:
+                        self.curr_valid_actions.append(PON)
+                    elif act.action == mp.Action.Kan:
+                        self.curr_valid_actions.append(MINKAN)
+                    elif act.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
+                        self.curr_valid_actions.append(RON)
+                    elif act.action == mp.Action.Pass:
+                        self.curr_valid_actions.append(NOOP)
+                    elif act.action == mp.Action.Chi:
+                        chi_parents_tiles = act.correspond_tiles
+                        if is_consecutive(int(self.latest_tile / 4), int(chi_parents_tiles[0].tile),
+                                          int(chi_parents_tiles[1].tile)):
+                            chi_side = CHILEFT
+                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.latest_tile / 4),
+                                            int(chi_parents_tiles[1].tile)):
+                            chi_side = CHIMIDDLE
+                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile),
+                                            int(self.latest_tile / 4)):
+                            chi_side = CHIRIGHT
+                        else:
+                            print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.latest_tile / 4))
+                            raise ValueError
+                        self.curr_valid_actions.append(chi_side)
                     else:
-                        print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.latest_tile / 4))
+                        print(act.action)
                         raise ValueError
-                    self.curr_valid_actions.append(chi_side)
-                else:
-                    print(act.action)
-                    raise ValueError
         else:
             self.curr_valid_actions = [NOOP]
 
@@ -439,6 +450,9 @@ class EnvMahjong3(gym.Env):
         #                 self.valid_int_actions.append(CHIRIGHT)
         #                 can_naru = True
         #
+
+        # print("get valid action time:", time.time() - gva_time)
+
         if not nhot:
             return self.curr_valid_actions
         else:
@@ -459,6 +473,9 @@ class EnvMahjong3(gym.Env):
         return self.Phases[self.t.get_phase()] == "GAME_OVER"
 
     def step(self, player_id, action, raw_action=False):
+
+        step_start_time = time.time()
+
         who, what = self.who_do_what()
 
         self.prev_step_is_naru = False  # to make latest_tiles available
@@ -476,7 +493,7 @@ class EnvMahjong3(gym.Env):
                 Current valid actions can be obtained by env.get_valid_actions(onehot=False)")
 
         if what == "response":
-            return self.step_response(action, player_id)
+            results = self.step_response(action, player_id)
         elif what == "play":
             ## !! Riici and discard are separate
             if self.is_deciding_riichi:
@@ -488,8 +505,11 @@ class EnvMahjong3(gym.Env):
                     raise ValueError
             else:
                 riichi = False
+            results = self.step_play(action, player_id, riichi)
 
-            return self.step_play(action, player_id, riichi)
+        # print("step time taken:", time.time() - step_start_time)
+
+        return results
 
     def get_obs(self, player_id):
 
