@@ -54,9 +54,9 @@ else:
     device = "cpu"
 
 
-agent_test0 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_20210724/search_envid_1_beta_1e-05_alpha_1_kldt_100_cqla_30/data/mahjong_VLOG_DDQN_0.model", map_location=torch.device(device))
-agent_test1 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_20210724/search_envid_1_beta_1e-05_alpha_1_kldt_100_cqla_30/data/mahjong_VLOG_DDQN_1.model", map_location=torch.device(device))
-agent_test2 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_20210724/search_envid_1_beta_1e-05_alpha_1_kldt_100_cqla_30/data/mahjong_VLOG_DDQN_2.model", map_location=torch.device(device))
+agent_test0 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_bn_20210728/search_envid_1_beta_0_alpha_1_kldt_-1_bnt_0_cqla_100/data/mahjong_VLOG_DDQN_0.model", map_location=torch.device(device))
+agent_test1 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_bn_20210728/search_envid_1_beta_0_alpha_1_kldt_-1_bnt_0_cqla_100/data/mahjong_VLOG_DDQN_0.model", map_location=torch.device(device))
+agent_test2 = torch.load("/mnt/c/code/snake/amlt/vlog_offlinemj_bn_20210728/search_envid_1_beta_0_alpha_1_kldt_-1_bnt_0_cqla_100/data/mahjong_VLOG_DDQN_0.model", map_location=torch.device(device))
 # agent_test3 = torch.load("./vlog_offlinemj_20210724/search_envid_1_beta_0_alpha_1_kldt_-1_cqla_100/data/mahjong_VLOG_DDQN_3.model", map_location=torch.device(device))
 
 
@@ -78,18 +78,12 @@ for game in range(1000):
     print("==============================Game {}=============================".format(game))
     # reset each episode
     sp = env_test.reset(0, 'east')
+    done = False
 
     for tt in range(max_steps):
 
-#         if curr_pid != 0:
-#             a = valid_actions[np.random.randint(len(valid_actions))]
-        
-        # if curr_pid == 0:
-        #     shanten_num = np.zeros(4)
-        #     for pid in range(4):
-        #         shanten_num[pid] = shanten.calculate_shanten(TilesConverter.to_34_array(
-        #             env_test.hand_tiles[pid] + [st[0] for st in env_test.side_tiles[pid]]))
-        #     print("向听数:", shanten_num)
+        # if curr_pid != 0:
+        #     a = valid_actions[np.random.randint(len(valid_actions))]
 
         valid_actions = env_test.get_valid_actions(nhot=False)
 
@@ -123,11 +117,13 @@ for game in range(1000):
 
         steps_taken += 1
 
-        if done:
+        if done or env_test.t.get_phase() == 16:
             payoffs = env_test.get_payoffs()
             # EpiTestRet += payoffs[0]
             
             print("~~~~~~~~~~~~Result: ", payoffs)
+
+            print(env_test.t.game_log.to_string())
             # if np.max(payoffs) > 0:
             #     plt.pcolor(sp)
             #     plt.show()
@@ -137,7 +133,10 @@ for game in range(1000):
             #       "； 副露：", to_unicode_tails(side_tiles_0))
             break
 
-
-
-
+        # if not done and env_test.get_curr_player_id() == 0 and len(valid_actions) > 1:
+        #     shanten_num = np.zeros(4)
+        #     for pid in range(4):
+        #         shanten_num[pid] = shanten.calculate_shanten(TilesConverter.to_34_array(
+        #             env_test.hand_tiles[pid] + [st[0] for st in env_test.side_tiles[pid]]))
+        #     print("向听数:", shanten_num)
 

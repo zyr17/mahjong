@@ -390,19 +390,23 @@ class EnvMahjong3(gym.Env):
                         self.curr_valid_actions.append(NOOP)
                     elif act.action == mp.Action.Chi:
                         chi_parents_tiles = act.correspond_tiles
-                        if is_consecutive(int(self.latest_tile / 4), int(chi_parents_tiles[0].tile),
+                        if is_consecutive(int(self.t.get_selected_action_tile().tile), int(chi_parents_tiles[0].tile),
                                           int(chi_parents_tiles[1].tile)):
                             chi_side = CHILEFT
-                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.latest_tile / 4),
+                            self.curr_valid_actions.append(chi_side)
+                        elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.t.get_selected_action_tile().tile),
                                             int(chi_parents_tiles[1].tile)):
                             chi_side = CHIMIDDLE
+                            self.curr_valid_actions.append(chi_side)
                         elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile),
-                                            int(self.latest_tile / 4)):
+                                            int(self.t.get_selected_action_tile().tile)):
                             chi_side = CHIRIGHT
+                            self.curr_valid_actions.append(chi_side)
                         else:
-                            print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.latest_tile / 4))
-                            raise ValueError
-                        self.curr_valid_actions.append(chi_side)
+                            print("==================== Abnormal Chi ====================")
+                            print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.t.get_selected_action_tile().tile))
+                            print("======================================================")
+                            # raise ValueError
                     else:
                         print(act.action)
                         raise ValueError
