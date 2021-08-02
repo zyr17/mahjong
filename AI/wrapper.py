@@ -241,7 +241,7 @@ class EnvMahjong3(gym.Env):
     metadata = {'name': 'Mahjong', 'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
     spec = {'id': 'TaskT'}
 
-    def __init__(self, printing=True, reward_unit=100):
+    def __init__(self, printing=True, reward_unit=100, force_win=True, force_riichi=False):
         self.t = mp.Table()
         self.Phases = (
             "P1_ACTION", "P2_ACTION", "P3_ACTION", "P4_ACTION", "P1_RESPONSE", "P2_RESPONSE", "P3_RESPONSE",
@@ -255,6 +255,9 @@ class EnvMahjong3(gym.Env):
         self.game_count = 0
         self.printing = printing
         self.reward_unit = reward_unit
+
+        self.force_win = force_win
+        self.force_riichi = force_riichi
 
         self.vector_feature_size = 30
 
@@ -614,7 +617,7 @@ class EnvMahjong3(gym.Env):
             win_action_no += 1
 
         # ------------- if can win, just win -----------
-        if can_win:
+        if self.force_win and can_win:
             warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             desired_action_type = mp.Action.Tsumo
@@ -659,6 +662,12 @@ class EnvMahjong3(gym.Env):
                 self.latest_tile = removed_tile
 
             else:
+                if self.force_riichi:
+                    for act in aval_actions:
+                        if act.action == mp.Action.Riichi and int(act.correspond_tiles[0].tile) == self.riichi_tile_id:
+                            riichi = True
+                            warnings.warn("Can richii, automatically choose to riichi !!")
+                            break
                 if riichi:
                     desired_action_type = mp.Action.Riichi
                     desired_action_tile_id = self.riichi_tile_id
@@ -848,7 +857,7 @@ class EnvMahjong3(gym.Env):
             win_action_no += 1
 
         # ------------- if can win, just win -----------
-        if can_win:
+        if self.force_win and can_win:
             warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             if self.t.get_selected_action_tile().red_dora:
