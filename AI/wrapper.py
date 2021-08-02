@@ -604,205 +604,219 @@ class EnvMahjong3(gym.Env):
 
         aval_actions = self.t.get_self_actions()
 
-        self.can_riichi = False
-        self.can_riichi_tiles_id = []
-        for act in aval_actions:
-            if act.action == mp.Action.Riichi:
-                self.can_riichi = True
-                self.can_riichi_tiles_id.append(int(act.correspond_tiles[0].tile))
+        can_win = False
+        win_action_no = 0
+        aval_self_actions = aval_actions
+        for self_action in aval_self_actions:
+            if self_action.action == mp.Action.Tsumo:
+                can_win = True
+                break
+            win_action_no += 1
 
-        if self.can_riichi and action < 34 and (not self.is_deciding_riichi) and (action in self.can_riichi_tiles_id):
-            self.riichi_tile_id = action
-            self.is_deciding_riichi = True
-
-            reward = 0
-            done = 0
-
-            # ------ update state -------
-
-            if self.riichi_tile_id == int(self.hand_tiles[playerNo][-1] / 4):
-                is_from_hand = 1
-            else:
-                is_from_hand = 0
-            is_riichi = 0
-
-            discard_tile_id = action
-
-            correctly_discarded = False
-            for xx in range(4):
-                try:
-                    self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
-                    correctly_discarded = True
-                    removed_tile = discard_tile_id * 4 + 3 - xx
-                    break
-                except:
-                    pass
-            if not correctly_discarded:
-                raise ValueError
-
-            self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
-            self.latest_tile = removed_tile
-
+        # ------------- if can win, just win -----------
+        if can_win:
+            warnings.warn("Can win, automatically choose to win !!")
+            self.t.make_selection(win_action_no)
+            desired_action_type = mp.Action.Tsumo
         else:
-            if riichi:
-                desired_action_type = mp.Action.Riichi
-                desired_action_tile_id = self.riichi_tile_id
-                if self.riichi_tile_id == int(self.latest_tile / 4):
+            self.can_riichi = False
+            self.can_riichi_tiles_id = []
+            for act in aval_actions:
+                if act.action == mp.Action.Riichi:
+                    self.can_riichi = True
+                    self.can_riichi_tiles_id.append(int(act.correspond_tiles[0].tile))
+
+            if self.can_riichi and action < 34 and (not self.is_deciding_riichi) and (action in self.can_riichi_tiles_id):
+                self.riichi_tile_id = action
+                self.is_deciding_riichi = True
+
+                reward = 0
+                done = 0
+
+                # ------ update state -------
+
+                if self.riichi_tile_id == int(self.hand_tiles[playerNo][-1] / 4):
                     is_from_hand = 1
                 else:
                     is_from_hand = 0
-            else:  # normal step
-                if action < 34:
-                    desired_action_type = mp.Action.Play
-                    desired_action_tile_id = action
-                    if action != int(self.hand_tiles[playerNo][-1] / 4):
-                        is_from_hand = 1
-                    else:
-                        is_from_hand = 0
-                elif action == ANKAN:
-                    desired_action_tile_id = None  # TODO: There is some simplification
-                    desired_action_type = mp.Action.Ankan
-                elif action == ADDKAN:
-                    desired_action_tile_id = None  # TODO: There is some simplification
-                    desired_action_type = mp.Action.Kakan
-                elif action == TSUMO:
-                    desired_action_type = mp.Action.Tsumo
-                    desired_action_tile_id = None
-                elif action == PUSH:
-                    desired_action_type = mp.Action.KyuShuKyuHai
-                    desired_action_tile_id = None
-                elif action == NOOP:
-                    desired_action_type = mp.Action.Play
-                    desired_action_tile_id = self.riichi_tile_id
-                    action = self.riichi_tile_id
-                    if action != int(self.hand_tiles[playerNo][-1] / 4):
-                        is_from_hand = 1
-                    else:
-                        is_from_hand = 0
-                else:
-                    print(action)
+                is_riichi = 0
+
+                discard_tile_id = action
+
+                correctly_discarded = False
+                for xx in range(4):
+                    try:
+                        self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
+                        correctly_discarded = True
+                        removed_tile = discard_tile_id * 4 + 3 - xx
+                        break
+                    except:
+                        pass
+                if not correctly_discarded:
                     raise ValueError
 
-            action_no = 0
-            has_valid_action = False
-            for act in aval_actions:
-                if act.action == desired_action_type and \
-                        (desired_action_tile_id is None or int(act.correspond_tiles[0].tile) == desired_action_tile_id):
-                    has_valid_action = True
+                self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+                self.latest_tile = removed_tile
 
-                    if desired_action_type in [mp.Action.Ankan, mp.Action.Kakan]:
-                        kan_tile_id = int(act.correspond_tiles[0].tile)
-
-                    break
-                action_no += 1
-
-            if not has_valid_action:
-                print(desired_action_tile_id)
-                print(act.action)
-                print(desired_action_type)
-            assert has_valid_action is True
-
-            self.t.make_selection(action_no)
-
-            if self.t.get_selected_action() == mp.Action.Play or self.t.get_selected_action() == mp.Action.Riichi:
-                self.played_a_tile[playerNo] = True
-                assert aval_actions[action_no].correspond_tiles[0].tile == self.t.get_selected_action_tile().tile
-                if aval_actions[action_no].correspond_tiles[0].red_dora:
-                    self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
-                else:
-                    self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
-                # print("played a tile!!!!", self.latest_tile)
-
-            if self.Phases[self.t.get_phase()] == "GAME_OVER":
-                reward = self.get_final_score_change()[playerNo] / self.reward_unit
             else:
-                reward = (self.t.players[playerNo].score - score_before) / self.reward_unit
                 if riichi:
-                    reward -= 1000 / self.reward_unit
-
-            if self.Phases[self.t.get_phase()] == "GAME_OVER":
-                done = 1
-                self.final_score_changes.append(self.get_final_score_change())
-
-            else:
-                done = 0
-
-            for i in range(4):
-                self.scores_before[i] = self.t.players[i].score
-
-            self.is_deciding_riichi = False
-
-            # ----------------- State update -------------------
-
-            # if is riici or discard:
-            if desired_action_type == mp.Action.Riichi or desired_action_type == mp.Action.Play:
-                discard_tile_id = int(self.t.get_selected_action_tile().tile)
-                assert desired_action_tile_id == int(self.t.get_selected_action_tile().tile)
-
-                if desired_action_type == mp.Action.Play:
-                    correctly_discarded = False
-                    for xx in range(4):
-                        try:
-                            self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
-                            correctly_discarded = True
-                            removed_tile = discard_tile_id * 4 + 3 - xx
-                            break
-                        except:
-                            pass
-                    if not correctly_discarded:
+                    desired_action_type = mp.Action.Riichi
+                    desired_action_tile_id = self.riichi_tile_id
+                    if self.riichi_tile_id == int(self.latest_tile / 4):
+                        is_from_hand = 1
+                    else:
+                        is_from_hand = 0
+                else:  # normal step
+                    if action < 34:
+                        desired_action_type = mp.Action.Play
+                        desired_action_tile_id = action
+                        if action != int(self.hand_tiles[playerNo][-1] / 4):
+                            is_from_hand = 1
+                        else:
+                            is_from_hand = 0
+                    elif action == ANKAN:
+                        desired_action_tile_id = None  # TODO: There is some simplification
+                        desired_action_type = mp.Action.Ankan
+                    elif action == ADDKAN:
+                        desired_action_tile_id = None  # TODO: There is some simplification
+                        desired_action_type = mp.Action.Kakan
+                    elif action == TSUMO:
+                        desired_action_type = mp.Action.Tsumo
+                        desired_action_tile_id = None
+                    elif action == PUSH:
+                        desired_action_type = mp.Action.KyuShuKyuHai
+                        desired_action_tile_id = None
+                    elif action == NOOP:
+                        desired_action_type = mp.Action.Play
+                        desired_action_tile_id = self.riichi_tile_id
+                        action = self.riichi_tile_id
+                        if action != int(self.hand_tiles[playerNo][-1] / 4):
+                            is_from_hand = 1
+                        else:
+                            is_from_hand = 0
+                    else:
+                        print(action)
                         raise ValueError
 
-                    if riichi:
-                        is_riichi = 1
+                action_no = 0
+                has_valid_action = False
+                for act in aval_actions:
+                    if act.action == desired_action_type and \
+                            (desired_action_tile_id is None or int(act.correspond_tiles[0].tile) == desired_action_tile_id):
+                        has_valid_action = True
+
+                        if desired_action_type in [mp.Action.Ankan, mp.Action.Kakan]:
+                            kan_tile_id = int(act.correspond_tiles[0].tile)
+
+                        break
+                    action_no += 1
+
+                if not has_valid_action:
+                    print(desired_action_tile_id)
+                    print(act.action)
+                    print(desired_action_type)
+                assert has_valid_action is True
+
+                self.t.make_selection(action_no)
+
+                if self.t.get_selected_action() == mp.Action.Play or self.t.get_selected_action() == mp.Action.Riichi:
+                    self.played_a_tile[playerNo] = True
+                    assert aval_actions[action_no].correspond_tiles[0].tile == self.t.get_selected_action_tile().tile
+                    if aval_actions[action_no].correspond_tiles[0].red_dora:
+                        self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile)
                     else:
-                        is_riichi = 0
+                        self.latest_tile = 4 * int(self.t.get_selected_action_tile().tile) + 3
+                    # print("played a tile!!!!", self.latest_tile)
 
-                    self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
-                    self.latest_tile = removed_tile
+                self.is_deciding_riichi = False
 
-                elif desired_action_type == mp.Action.Riichi:  # discard already done
-                    self.river_tiles[playerNo][-1][-1] = 1  # make riichi obs True
+                # ----------------- State update -------------------
 
-            elif action == TSUMO or action == PUSH:
-                # Does not need to do anything
-                pass
+                # if is riici or discard:
+                if desired_action_type == mp.Action.Riichi or desired_action_type == mp.Action.Play:
+                    discard_tile_id = int(self.t.get_selected_action_tile().tile)
+                    assert desired_action_tile_id == int(self.t.get_selected_action_tile().tile)
 
-            elif action == ADDKAN:
-                # --------------- update game states  -------------
-                side_tiles_added_by_naru = [[kan_tile_id * 4, 0]]  # because aka only 1
+                    if desired_action_type == mp.Action.Play:
+                        correctly_discarded = False
+                        for xx in range(4):
+                            try:
+                                self.hand_tiles[playerNo].remove(discard_tile_id * 4 + 3 - xx)
+                                correctly_discarded = True
+                                removed_tile = discard_tile_id * 4 + 3 - xx
+                                break
+                            except:
+                                pass
+                        if not correctly_discarded:
+                            raise ValueError
 
-                hand_tiles_removed_by_naru = []
+                        if riichi:
+                            is_riichi = 1
+                        else:
+                            is_riichi = 0
 
-                for ht in self.hand_tiles[playerNo]:
-                    if int(ht / 4) == kan_tile_id:
-                        hand_tiles_removed_by_naru.append(ht)
+                        self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+                        self.latest_tile = removed_tile
 
-                self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
+                    elif desired_action_type == mp.Action.Riichi:  # discard already done
+                        self.river_tiles[playerNo][-1][-1] = 1  # make riichi obs True
 
-                for hh in hand_tiles_removed_by_naru:
-                    self.hand_tiles[playerNo].remove(hh)
+                elif action == TSUMO or action == PUSH:
+                    # Does not need to do anything
+                    pass
 
-                self.prev_step_is_naru = True
+                elif action == ADDKAN:
+                    # --------------- update game states  -------------
+                    side_tiles_added_by_naru = [[kan_tile_id * 4, 0]]  # because aka only 1
 
-            elif action == ANKAN:
-                # --------------- update game states  -------------
-                side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
-                                            [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
+                    hand_tiles_removed_by_naru = []
 
-                hand_tiles_removed_by_naru = []
+                    for ht in self.hand_tiles[playerNo]:
+                        if int(ht / 4) == kan_tile_id:
+                            hand_tiles_removed_by_naru.append(ht)
 
-                for ht in self.hand_tiles[playerNo]:
-                    if int(ht / 4) == kan_tile_id:
-                        hand_tiles_removed_by_naru.append(ht)
+                    self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
 
-                self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
+                    for hh in hand_tiles_removed_by_naru:
+                        self.hand_tiles[playerNo].remove(hh)
 
-                for hh in hand_tiles_removed_by_naru:
-                    self.hand_tiles[playerNo].remove(hh)
+                    self.prev_step_is_naru = True
 
-                self.prev_step_is_naru = True
-            else:
-                raise ValueError
+                elif action == ANKAN:
+                    # --------------- update game states  -------------
+                    side_tiles_added_by_naru = [[kan_tile_id * 4, 0], [kan_tile_id * 4 + 1, 0],
+                                                [kan_tile_id * 4 + 2, 0], [kan_tile_id * 4 + 3, 0]]
+
+                    hand_tiles_removed_by_naru = []
+
+                    for ht in self.hand_tiles[playerNo]:
+                        if int(ht / 4) == kan_tile_id:
+                            hand_tiles_removed_by_naru.append(ht)
+
+                    self.side_tiles[playerNo] = self.side_tiles[playerNo] + side_tiles_added_by_naru
+
+                    for hh in hand_tiles_removed_by_naru:
+                        self.hand_tiles[playerNo].remove(hh)
+
+                    self.prev_step_is_naru = True
+                else:
+                    raise ValueError
+
+        if self.Phases[self.t.get_phase()] == "GAME_OVER":
+            reward = self.get_final_score_change()[playerNo] / self.reward_unit
+        else:
+            reward = (self.t.players[playerNo].score - score_before) / self.reward_unit
+            if riichi:
+                reward -= 1000 / self.reward_unit
+
+        if self.Phases[self.t.get_phase()] == "GAME_OVER":
+            done = 1
+            self.final_score_changes.append(self.get_final_score_change())
+        else:
+            done = 0
+
+        for i in range(4):
+            self.scores_before[i] = self.t.players[i].score
 
         return self.get_obs(playerNo), reward, done, info
 
