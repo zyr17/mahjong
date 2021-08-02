@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 import torch.distributions as dis
 
+INFINITY = 1e9
 
 class MinusOneModule(nn.Module):
     def __init__(self):
@@ -225,4 +226,53 @@ class DiscreteActionQNetwork(nn.Module):
 
             return dist.log_prob(q_target)
 
+
+class DiscreteActionPolicyNetwork(nn.Module):
+    def __init__(self, input_size, output_size, hidden_layers=None, act_fn=nn.ReLU, logit_clip=None,
+                 batch_norm_tau=0, device='cpu'):
+        super(DiscreteActionPolicyNetwork, self).__init__()
+
+        if logit_clip is None:
+            logit_clip = [-np.inf, np.inf]
+        if hidden_layers is None:
+            hidden_layers = [256, 256]
+        self.input_size = input_size
+        self.output_size = output_size
+        self.hidden_layers = hidden_layers
+
+        self.device = device
+
+        self.network_modules = nn.ModuleList()
+
+        last_layer_size = input_size
+        for layer_size in hidden_layers:
+            self.network_modules.append(nn.Linear(last_layer_size, layer_size))
+            if batch_norm_tau:
+                self.network_modules.append(nn.BatchNorm1d(layer_size, momentum=1 / batch_norm_tau))
+            self.network_modules.append(act_fn())
+            last_layer_size = layer_size
+
+        self.network_modules.append(nn.Linear(last_layer_size, output_size))
+
+        self.main_network = nn.Sequential(*self.network_modules)
+
+        self.logit_clip = logit_clip
+
+    def forward(self, x):
+        logit_pi = self.main_network(x).clamp(self.logit_clip[0], self.logit_clip[1])
+
+        return logit_pi
+
+    def sample_action(self, x, action_mask=None, greedy=False):
+
+        pi = F.softmax(self.forward(x).clamp(self.logit_clip[0], self.logit_clip[1]), dim=-1)
+        pi_np = (pi.cpu().detach() * action_mask).numpy()
+        if greedy:
+            a = np.argmax(pi_np, axis=-1)
+        else:
+            size_a = pi_np.shape[-1]
+            a = np.zeros_like(pi_np[:, 0], dtype=np.float32)
+            for i in range(pi_np.shape[0]):
+                a[i] = np.random.choice(size_a, p=pi_np[i, :])
+        return a
 
