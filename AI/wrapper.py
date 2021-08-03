@@ -14,6 +14,9 @@ shanten = Shanten()
 
 from gym.spaces import Discrete, Box
 
+
+# ------------- OBS INDICES -----------
+
 player_i_hand_start_ind = [0, 63, 69, 75]  # later 3 in oracle_obs
 player_i_side_start_ind = [6, 12, 18, 24]
 player_i_river_start_ind = [30, 37, 44, 51]
@@ -27,6 +30,8 @@ latest_tile_ind = 62
 aka_tile_ints = [16, 16 + 36, 16 + 36 + 36]
 player_obs_width = 63
 
+
+# ------------- ACTION INDICES -----------
 CHILEFT = 34
 CHIMIDDLE = 35
 CHIRIGHT = 36
@@ -40,6 +45,18 @@ RON = 42
 TSUMO = 43
 PUSH = 44
 NOOP = 45
+
+# ----------- ACTION REPRESENTING OBS INDICES ----------
+
+DISCARD_ACT_IND = 0
+CHI_ACT_IND = 1
+PON_ACT_IND = 2
+KAN_ACT_IND = 3
+RIICHI_ACT_IND = 4
+RON_ACT_IND = 5
+TSUMO_ACT_IND = 6
+PUSH_ACT_IND = 7
+
 
 UNICODE_TILES = """
     🀇 🀈 🀉 🀊 🀋 🀌 🀍 🀎 🀏 
@@ -355,6 +372,8 @@ class EnvMahjong3(gym.Env):
         self.non_valid_discard_tiles_id = [[], [], [], []]
         self.ron_tile = None
 
+        self.aval_action_obs = np.zeros([34, 8], dtype=np.uint8)
+
         return self.get_obs(who)
 
     def get_valid_actions(self, nhot=True):
@@ -365,6 +384,8 @@ class EnvMahjong3(gym.Env):
 
         self.curr_valid_actions = []
 
+        self.aval_action_obs = np.zeros([34, 8], dtype=np.uint8)
+
         phase = self.t.get_phase()
         if phase < 4:
             aval_actions = self.t.get_self_actions()
@@ -374,19 +395,27 @@ class EnvMahjong3(gym.Env):
 
             if self.is_deciding_riichi:
                 self.curr_valid_actions += [RIICHI, NOOP]
+                self.aval_action_obs[int(self.latest_tile / 4), RIICHI_ACT_IND] = 1
 
             else:
                 for act in aval_actions:
                     if act.action == mp.Action.Play:
                         self.curr_valid_actions.append(int(act.correspond_tiles[0].tile))  # considered shiti
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), DISCARD_ACT_IND] = 1
                     elif act.action == mp.Action.Ankan:
                         self.curr_valid_actions.append(ANKAN)
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
                     elif act.action == mp.Action.Kakan:
                         self.curr_valid_actions.append(ADDKAN)
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
                     elif act.action == mp.Action.Tsumo:
                         self.curr_valid_actions.append(TSUMO)
+                        self.aval_action_obs[int(self.latest_tile / 4), TSUMO_ACT_IND] = 1
                     elif act.action == mp.Action.KyuShuKyuHai:
                         self.curr_valid_actions.append(PUSH)
+                        for ht in self.hand_tiles[self.t.who_make_selection()]:
+                            if int(ht / 4) in [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33]:
+                                self.aval_action_obs[int(ht / 4), PUSH_ACT_IND] = 1
                     elif act.action != mp.Action.Riichi:
                         print(act.action)
                         raise ValueError
@@ -400,10 +429,13 @@ class EnvMahjong3(gym.Env):
                 for act in aval_actions:
                     if act.action == mp.Action.Pon:
                         self.curr_valid_actions.append(PON)
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), PON_ACT_IND] = 1
                     elif act.action == mp.Action.Kan:
                         self.curr_valid_actions.append(MINKAN)
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
                     elif act.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
                         self.curr_valid_actions.append(RON)
+                        self.aval_action_obs[int(self.t.get_selected_action_tile().tile), RON_ACT_IND] = 1
                     elif act.action == mp.Action.Pass:
                         self.curr_valid_actions.append(NOOP)
                     elif act.action == mp.Action.Chi:
@@ -425,6 +457,7 @@ class EnvMahjong3(gym.Env):
                             print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.t.get_selected_action_tile().tile))
                             print("======================================================")
                             # raise ValueError
+                        self.aval_action_obs[int(self.t.get_selected_action_tile().tile), CHI_ACT_IND] = 1
                     else:
                         print(act.action)
                         raise ValueError
@@ -432,7 +465,6 @@ class EnvMahjong3(gym.Env):
             self.curr_valid_actions = [NOOP]
 
         self.curr_valid_actions = list(set(self.curr_valid_actions))
-
 
         # ## Note that the curr_valid_action are ordered, corresonding to self.t.get_aval_next_states()
         #
@@ -532,6 +564,11 @@ class EnvMahjong3(gym.Env):
 
         return results
 
+    def get_aval_action_obs(self, player_id):
+        if not player_id == self.t.who_make_selection():
+            warnings.warn("You are trying to obtain observation from a player who is not making desicion !!!! This is not encouraged!")
+        return self.aval_action_obs
+
     def get_obs(self, player_id):
         self.update_hand_and_latest_tiles()
 
@@ -542,7 +579,11 @@ class EnvMahjong3(gym.Env):
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
             self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
-        return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
+        if self.append_aval_action_obs:
+            return np.concatenate([self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1),
+                                   self.get_aval_action_obs(player_id).swapaxes(0, 1)], axis=-2)
+        else:
+            return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
 
     def get_full_obs(self, player_id):
         self.update_hand_and_latest_tiles()
@@ -554,7 +595,11 @@ class EnvMahjong3(gym.Env):
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
             self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
-        return self.curr_all_obs[player_id].swapaxes(0, 1)
+        if self.append_aval_action_obs:
+            return np.concatenate([self.curr_all_obs[player_id].swapaxes(0, 1),
+                                   self.get_aval_action_obs(player_id).swapaxes(0, 1)], axis=-2)
+        else:
+            return self.curr_all_obs[player_id].swapaxes(0, 1)
 
     def get_state(self):
         # get raw state
@@ -685,6 +730,8 @@ class EnvMahjong3(gym.Env):
 
             else:
                 self.do_not_update_hand_tiles_this_time = False
+                self.update_hand_and_latest_tiles()
+
                 if self.force_riichi:
                     for act in aval_actions:
                         if act.action == mp.Action.Riichi and int(act.correspond_tiles[0].tile) == self.riichi_tile_id:
@@ -779,7 +826,7 @@ class EnvMahjong3(gym.Env):
                                 break
                             except:
                                 pass
-                        if not correctly_discarded:
+                        if not correctly_discarded and not self.is_deciding_riichi:
                             raise ValueError
 
                         if riichi:

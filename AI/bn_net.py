@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -229,7 +231,7 @@ class DiscreteActionQNetwork(nn.Module):
 
 class DiscreteActionPolicyNetwork(nn.Module):
     def __init__(self, input_size, output_size, hidden_layers=None, act_fn=nn.ReLU, logit_clip=None,
-                 batch_norm_tau=0, device='cpu'):
+                 batch_norm_tau=0, dropout=0, device='cpu'):
         super(DiscreteActionPolicyNetwork, self).__init__()
 
         if logit_clip is None:
@@ -240,6 +242,7 @@ class DiscreteActionPolicyNetwork(nn.Module):
         self.output_size = output_size
         self.hidden_layers = hidden_layers
 
+        self.dropout = dropout
         self.device = device
 
         self.network_modules = nn.ModuleList()
@@ -250,6 +253,8 @@ class DiscreteActionPolicyNetwork(nn.Module):
             if batch_norm_tau:
                 self.network_modules.append(nn.BatchNorm1d(layer_size, momentum=1 / batch_norm_tau))
             self.network_modules.append(act_fn())
+            if self.dropout:
+                self.network_modules.append(nn.Dropout(p=self.dropout))
             last_layer_size = layer_size
 
         self.network_modules.append(nn.Linear(last_layer_size, output_size))
@@ -268,7 +273,11 @@ class DiscreteActionPolicyNetwork(nn.Module):
         pi = F.softmax(self.forward(x).clamp(self.logit_clip[0], self.logit_clip[1]), dim=-1)
         pi_np = (pi.cpu().detach() * action_mask).numpy()
         if greedy:
-            a = np.argmax(pi_np, axis=-1)
+            if np.any(pi_np > 0):
+                a = np.argmax(pi_np, axis=-1)
+            else:
+                a = np.random.choice(action_mask.shape[-1], 1, p=action_mask.numpy().reshape([-1]) / action_mask.numpy().sum())
+                warnings.warn("No preferred action, select action {}".format(a[0]))
         else:
             size_a = pi_np.shape[-1]
             a = np.zeros_like(pi_np[:, 0], dtype=np.float32)
