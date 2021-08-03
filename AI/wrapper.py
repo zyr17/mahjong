@@ -299,8 +299,12 @@ class EnvMahjong3(gym.Env):
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
 
-        self.observation_space = Box(low=0, high=4, shape=[63, 34])
-        self.full_observation_space = Box(low=0, high=4, shape=[81, 34])
+        if not self.append_aval_action_obs:
+            self.observation_space = Box(low=0, high=4, shape=[63, 34])
+            self.full_observation_space = Box(low=0, high=4, shape=[81, 34])
+        else:
+            self.observation_space = Box(low=0, high=4, shape=[63 + 8, 34])
+            self.full_observation_space = Box(low=0, high=4, shape=[81 + 8, 34])
 
         self.action_space = Discrete(46)
 
