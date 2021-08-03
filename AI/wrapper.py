@@ -103,12 +103,9 @@ def is_consecutive(a: int, b: int, c: int):
     return array[1] - array[0] == 1 and array[2] - array[1] == 1
 
 
-def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind, self_wind, latest_tile=None, prev_step_is_naru=False):
+def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind: str, oya_id: int, latest_tile=None):
 
     all_obs_0p = np.zeros([34, 63 + 18], dtype=np.uint8)
-
-    if prev_step_is_naru:
-        latest_tile = None
 
     global player_i_hand_start_ind
     global player_i_side_start_ind
@@ -192,8 +189,22 @@ def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game
         all_obs_0p[dora2indicator(dora_hai_id), dora_indicator_ind] += 1
 
     # ----------------- Public Game State ----------------
-    all_obs_0p[:, game_wind_ind] = game_wind  # Case 1 to 4 in dim 0
-    all_obs_0p[:, self_wind_ind] = self_wind
+    # self wind and game wind
+    if game_wind == "east":
+        game_wind_tile_id = 27
+    elif game_wind == "south":
+        game_wind_tile_id = 28
+    elif game_wind == "west":
+        game_wind_tile_id = 29
+    elif game_wind == "north":
+        game_wind_tile_id = 30
+    else:
+        raise ValueError
+
+    self_wind_tile_id = 27 + (playerNo - oya_id + 8) % 4
+
+    all_obs_0p[game_wind_tile_id, game_wind_ind] = 1  # Case 1 to 4 in dim 0
+    all_obs_0p[self_wind_tile_id, self_wind_ind] = 1
 
     # ------------ Latest Tile -------------
     if latest_tile is not None:
@@ -201,7 +212,6 @@ def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game
 
     # players_obs = all_obs_0p[:, :63]
     # oracles_obs = all_obs_0p[:, 63:]
-
 
     if playerNo == 0:
         return all_obs_0p
@@ -240,8 +250,9 @@ class EnvMahjong3(gym.Env):
 
     metadata = {'name': 'Mahjong', 'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
     spec = {'id': 'TaskT'}
+    version = "v1"
 
-    def __init__(self, printing=True, reward_unit=100, force_win=True, force_riichi=False):
+    def __init__(self, printing=True, reward_unit=100, force_win=True, force_riichi=False, append_aval_action_obs=True):
         self.t = mp.Table()
         self.Phases = (
             "P1_ACTION", "P2_ACTION", "P3_ACTION", "P4_ACTION", "P1_RESPONSE", "P2_RESPONSE", "P3_RESPONSE",
@@ -260,6 +271,8 @@ class EnvMahjong3(gym.Env):
         self.force_riichi = force_riichi
 
         self.vector_feature_size = 30
+
+        self.append_aval_action_obs = append_aval_action_obs
 
         self.scores_init = np.zeros([4], dtype=np.float32)
         for i in range(4):
@@ -282,6 +295,7 @@ class EnvMahjong3(gym.Env):
         oya = '{}'.format(oya)
 
         self.oya_id = int(oya)
+        self.game_wind = game_wind
 
         # self.t.game_init()
         self.t.game_init_with_metadata({"oya": oya, "wind": game_wind})
@@ -306,20 +320,20 @@ class EnvMahjong3(gym.Env):
         self.river_tiles = [[], [], [], []]
         self.side_tiles = [[], [], [], []]
         self.dora_tiles = []
-        self.game_wind_obs = np.zeros(34)  # index: -4
+        # self.game_wind_obs = np.zeros(34)  # index: -4
 
         self.dora_tiles.append(dora_ind_2_dora_id(int(self.t.DORA[0].tile)) * 4 + 3)
 
-        if game_wind == "east":
-            self.game_wind_obs[27] = 1
-        elif game_wind == "south":
-            self.game_wind_obs[28] = 1
-        elif game_wind == "west":
-            self.game_wind_obs[29] = 1
-        elif game_wind == "north":
-            self.game_wind_obs[30] = 1
-        else:
-            raise ValueError
+        # if game_wind == "east":
+        #     self.game_wind_obs[27] = 1
+        # elif game_wind == "south":
+        #     self.game_wind_obs[28] = 1
+        # elif game_wind == "west":
+        #     self.game_wind_obs[29] = 1
+        # elif game_wind == "north":
+        #     self.game_wind_obs[30] = 1
+        # else:
+        #     raise ValueError
 
         self.latest_tile = None
 
@@ -334,6 +348,7 @@ class EnvMahjong3(gym.Env):
 
         self.is_deciding_riichi = False
         self.can_riichi = False
+        self.do_not_update_hand_tiles_this_time = False
         self.prev_step_is_naru = False
         self.riichi_tile_id = -1
         self.curr_valid_actions = []
@@ -489,7 +504,6 @@ class EnvMahjong3(gym.Env):
 
         # if self.latest_tile is not None:
         #     assert int(self.latest_tile / 4) == int(self.t.get_selected_action_tile().tile)
-
         self.update_hand_and_latest_tiles()
 
         assert who == player_id
@@ -519,7 +533,6 @@ class EnvMahjong3(gym.Env):
         return results
 
     def get_obs(self, player_id):
-
         self.update_hand_and_latest_tiles()
 
         player_wind_obs = np.zeros([34])
@@ -527,13 +540,11 @@ class EnvMahjong3(gym.Env):
 
         self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
-            self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
-            prev_step_is_naru=self.prev_step_is_naru)
+            self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
         return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
 
     def get_full_obs(self, player_id):
-
         self.update_hand_and_latest_tiles()
 
         player_wind_obs = np.zeros([34])
@@ -541,8 +552,7 @@ class EnvMahjong3(gym.Env):
 
         self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
-            self.game_wind_obs, player_wind_obs, latest_tile=self.latest_tile,
-            prev_step_is_naru=self.prev_step_is_naru)
+            self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
         return self.curr_all_obs[player_id].swapaxes(0, 1)
 
@@ -557,7 +567,7 @@ class EnvMahjong3(gym.Env):
                     self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
 
         return self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles, \
-               self.game_wind_obs, self.latest_tile
+               self.game_wind, self.oya_id, self.latest_tile
 
     def get_phase_text(self):
         return self.Phases[self.t.get_phase()]
@@ -566,15 +576,23 @@ class EnvMahjong3(gym.Env):
 
         if self.t.get_phase() != 16:
             playerNo = self.get_curr_player_id()
-            old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
+            # old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
+            # old_hand_tiles_id_player = np.array([int(ht / 4) for ht in old_hand_tiles_player])
 
-            self.hand_tiles = [[], [], [], []]
-            for pid in range(4):
-                for i in range(len(self.t.players[pid].hand)):
-                    if self.t.players[pid].hand[i].red_dora:
-                        self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
-                    else:
-                        self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+            if not self.do_not_update_hand_tiles_this_time:
+                self.hand_tiles = [[], [], [], []]
+                for pid in range(4):
+                    for i in range(len(self.t.players[pid].hand)):
+                        if self.t.players[pid].hand[i].red_dora:
+                            self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4)
+                        else:
+                            self.hand_tiles[pid].append(int(self.t.players[pid].hand[i].tile) * 4 + 3)
+
+                # hand_tiles_id_player = np.array([int(ht / 4) for ht in self.hand_tiles[playerNo]])
+                # if np.any(hand_tiles_id_player != old_hand_tiles_id_player):
+                #     print("---------- Hand Tiles Dismatch ----------------")
+                #     print("Hand Tiles ID from Table:", hand_tiles_id_player)
+                #     print("Hand Tiles ID from Old:", old_hand_tiles_id_player)
 
             if self.t.get_phase() < 4:
                 self.latest_tile = self.hand_tiles[playerNo][-1]
@@ -621,6 +639,7 @@ class EnvMahjong3(gym.Env):
             warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             desired_action_type = mp.Action.Tsumo
+            self.do_not_update_hand_tiles_this_time = False
         else:
             self.can_riichi = False
             self.can_riichi_tiles_id = []
@@ -659,9 +678,13 @@ class EnvMahjong3(gym.Env):
                     raise ValueError
 
                 self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+
+                # remove from hand tiles
+                self.do_not_update_hand_tiles_this_time = True
                 self.latest_tile = removed_tile
 
             else:
+                self.do_not_update_hand_tiles_this_time = False
                 if self.force_riichi:
                     for act in aval_actions:
                         if act.action == mp.Action.Riichi and int(act.correspond_tiles[0].tile) == self.riichi_tile_id:
