@@ -584,7 +584,7 @@ class EnvMahjong3(gym.Env):
             self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
         if self.append_aval_action_obs:
-            return np.concatenate([self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1),
+            return np.concatenate([self.curr_all_obs[player_id, :, :63].swapaxes(0, 1),
                                    self.get_aval_action_obs(player_id).swapaxes(0, 1)], axis=-2)
         else:
             return self.curr_all_obs[player_id, :, :self.observation_space.shape[0]].swapaxes(0, 1)
@@ -600,8 +600,9 @@ class EnvMahjong3(gym.Env):
             self.game_wind, self.oya_id, latest_tile=self.latest_tile)
 
         if self.append_aval_action_obs:
-            return np.concatenate([self.curr_all_obs[player_id].swapaxes(0, 1),
-                                   self.get_aval_action_obs(player_id).swapaxes(0, 1)], axis=-2)
+            return np.concatenate([self.curr_all_obs[player_id, :, :63].swapaxes(0, 1),
+                                   self.get_aval_action_obs(player_id).swapaxes(0, 1),
+                                   self.curr_all_obs[player_id, :, -18:].swapaxes(0, 1)], axis=-2)
         else:
             return self.curr_all_obs[player_id].swapaxes(0, 1)
 
