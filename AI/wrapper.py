@@ -386,7 +386,7 @@ class EnvMahjong3(gym.Env):
         self.non_valid_discard_tiles_id = [[], [], [], []]
         self.ron_tile = None
 
-        self.aval_action_obs = np.zeros([34, 8], dtype=np.uint8)
+        self.aval_action_obs = np.zeros([34, 12], dtype=np.uint8)
 
         return self.get_state()
 
@@ -398,7 +398,7 @@ class EnvMahjong3(gym.Env):
 
         self.curr_valid_actions = []
 
-        self.aval_action_obs = np.zeros([34, 8], dtype=np.uint8)
+        self.aval_action_obs = np.zeros([34, 12], dtype=np.uint8)
 
         phase = self.t.get_phase()
         if phase < 4:
