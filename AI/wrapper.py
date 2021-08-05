@@ -38,24 +38,34 @@ CHIRIGHT = 36
 PON = 37
 ANKAN = 38
 MINKAN = 39
-ADDKAN = 40
+KAKAN = 40
 
 RIICHI = 41
 RON = 42
 TSUMO = 43
 PUSH = 44
-NOOP = 45
+
+PASS_RESPONSE = 45
+PASS_RIICHI = 46
+
+# Pass KAKAN, ANKAN, TSUMO and PUSH can be done by discard
 
 # ----------- ACTION REPRESENTING OBS INDICES ----------
 
 DISCARD_ACT_IND = 0
-CHI_ACT_IND = 1
-PON_ACT_IND = 2
-KAN_ACT_IND = 3
-RIICHI_ACT_IND = 4
-RON_ACT_IND = 5
-TSUMO_ACT_IND = 6
-PUSH_ACT_IND = 7
+
+CHILEFT_ACT_IND = 1
+CHIMIDDLE_ACT_IND = 2
+CHIRIGHT_ACT_IND = 3
+PON_ACT_IND = 4
+ANKAN_ACT_IND = 5
+MINKAN_ACT_IND = 6
+KAKAN_ACT_IND = 7
+
+RIICHI_ACT_IND = 8
+RON_ACT_IND = 9
+TSUMO_ACT_IND = 10
+PUSH_ACT_IND = 11
 
 
 UNICODE_TILES = """
@@ -117,7 +127,7 @@ def dora2indicator(dora_id):
 
 def is_consecutive(a: int, b: int, c: int):
     array = np.array([a, b, c])
-    return array[1] - array[0] == 1 and array[2] - array[1] == 1
+    return array[1] - array[0] == 1 and array[2] - array[1] == 1 and c < 27 and int(a / 9) == int(b / 9) == int(c / 9)
 
 
 def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game_wind: str, oya_id: int, latest_tile=None):
@@ -267,7 +277,7 @@ class EnvMahjong3(gym.Env):
 
     metadata = {'name': 'Mahjong', 'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 50}
     spec = {'id': 'TaskT'}
-    version = "v1"
+    version = "v2"
 
     def __init__(self, printing=True, reward_unit=100, force_win=True, force_riichi=False, append_aval_action_obs=True):
         self.t = mp.Table()
@@ -303,10 +313,10 @@ class EnvMahjong3(gym.Env):
             self.observation_space = Box(low=0, high=4, shape=[63, 34])
             self.full_observation_space = Box(low=0, high=4, shape=[81, 34])
         else:
-            self.observation_space = Box(low=0, high=4, shape=[63 + 8, 34])
-            self.full_observation_space = Box(low=0, high=4, shape=[81 + 8, 34])
+            self.observation_space = Box(low=0, high=4, shape=[63 + 12, 34])
+            self.full_observation_space = Box(low=0, high=4, shape=[81 + 12, 34])
 
-        self.action_space = Discrete(46)
+        self.action_space = Discrete(47)
 
     def reset(self, oya, game_wind):
         self.t = mp.Table()
@@ -398,7 +408,7 @@ class EnvMahjong3(gym.Env):
             #     print(aval_actions[0].action)
 
             if self.is_deciding_riichi:
-                self.curr_valid_actions += [RIICHI, NOOP]
+                self.curr_valid_actions += [RIICHI, PASS_RIICHI]
                 self.aval_action_obs[int(self.latest_tile / 4), RIICHI_ACT_IND] = 1
 
             else:
@@ -408,10 +418,10 @@ class EnvMahjong3(gym.Env):
                         self.aval_action_obs[int(act.correspond_tiles[0].tile), DISCARD_ACT_IND] = 1
                     elif act.action == mp.Action.Ankan:
                         self.curr_valid_actions.append(ANKAN)
-                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), ANKAN_ACT_IND] = 1
                     elif act.action == mp.Action.Kakan:
-                        self.curr_valid_actions.append(ADDKAN)
-                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
+                        self.curr_valid_actions.append(KAKAN)
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAKAN_ACT_IND] = 1
                     elif act.action == mp.Action.Tsumo:
                         self.curr_valid_actions.append(TSUMO)
                         self.aval_action_obs[int(self.latest_tile / 4), TSUMO_ACT_IND] = 1
@@ -428,7 +438,7 @@ class EnvMahjong3(gym.Env):
             aval_actions = self.t.get_response_actions()
 
             if len(aval_actions) == 1:
-                self.curr_valid_actions = [NOOP]
+                self.curr_valid_actions = [PASS_RESPONSE]
             else:
                 for act in aval_actions:
                     if act.action == mp.Action.Pon:
@@ -436,37 +446,40 @@ class EnvMahjong3(gym.Env):
                         self.aval_action_obs[int(act.correspond_tiles[0].tile), PON_ACT_IND] = 1
                     elif act.action == mp.Action.Kan:
                         self.curr_valid_actions.append(MINKAN)
-                        self.aval_action_obs[int(act.correspond_tiles[0].tile), KAN_ACT_IND] = 1
+                        self.aval_action_obs[int(act.correspond_tiles[0].tile), MINKAN_ACT_IND] = 1
                     elif act.action in [mp.Action.Ron, mp.Action.ChanKan, mp.Action.ChanAnKan]:
                         self.curr_valid_actions.append(RON)
                         self.aval_action_obs[int(self.t.get_selected_action_tile().tile), RON_ACT_IND] = 1
                     elif act.action == mp.Action.Pass:
-                        self.curr_valid_actions.append(NOOP)
+                        self.curr_valid_actions.append(PASS_RESPONSE)
                     elif act.action == mp.Action.Chi:
                         chi_parents_tiles = act.correspond_tiles
                         if is_consecutive(int(self.t.get_selected_action_tile().tile), int(chi_parents_tiles[0].tile),
                                           int(chi_parents_tiles[1].tile)):
                             chi_side = CHILEFT
                             self.curr_valid_actions.append(chi_side)
+                            self.aval_action_obs[int(self.t.get_selected_action_tile().tile), CHILEFT_ACT_IND] = 1
                         elif is_consecutive(int(chi_parents_tiles[0].tile), int(self.t.get_selected_action_tile().tile),
                                             int(chi_parents_tiles[1].tile)):
                             chi_side = CHIMIDDLE
                             self.curr_valid_actions.append(chi_side)
+                            self.aval_action_obs[int(self.t.get_selected_action_tile().tile), CHIMIDDLE_ACT_IND] = 1
                         elif is_consecutive(int(chi_parents_tiles[0].tile), int(chi_parents_tiles[1].tile),
                                             int(self.t.get_selected_action_tile().tile)):
                             chi_side = CHIRIGHT
                             self.curr_valid_actions.append(chi_side)
+                            self.aval_action_obs[int(self.t.get_selected_action_tile().tile), CHIRIGHT_ACT_IND] = 1
                         else:
                             print("==================== Abnormal Chi ====================")
                             print(chi_parents_tiles[0].tile, chi_parents_tiles[1].tile, int(self.t.get_selected_action_tile().tile))
                             print("======================================================")
                             # raise ValueError
-                        self.aval_action_obs[int(self.t.get_selected_action_tile().tile), CHI_ACT_IND] = 1
+
                     else:
                         print(act.action)
                         raise ValueError
         else:
-            self.curr_valid_actions = [NOOP]
+            self.curr_valid_actions = [-1]
 
         self.curr_valid_actions = list(set(self.curr_valid_actions))
 
@@ -478,7 +491,7 @@ class EnvMahjong3(gym.Env):
         # # TODO: how to make conditions
         # can_naru = False
         #
-        # self.curr_valid_actions = [NOOP]
+        # self.curr_valid_actions = [PASS_RESPONSE]
         #
         # player_id = self.get_curr_player_id()
         #
@@ -556,7 +569,7 @@ class EnvMahjong3(gym.Env):
             if self.is_deciding_riichi:
                 if action == RIICHI:
                     riichi = True
-                elif action == NOOP:
+                elif action == PASS_RIICHI:
                     riichi = False
                 else:
                     raise ValueError
@@ -763,7 +776,7 @@ class EnvMahjong3(gym.Env):
                     elif action == ANKAN:
                         desired_action_tile_id = None  # TODO: There is some simplification
                         desired_action_type = mp.Action.Ankan
-                    elif action == ADDKAN:
+                    elif action == KAKAN:
                         desired_action_tile_id = None  # TODO: There is some simplification
                         desired_action_type = mp.Action.Kakan
                     elif action == TSUMO:
@@ -772,7 +785,7 @@ class EnvMahjong3(gym.Env):
                     elif action == PUSH:
                         desired_action_type = mp.Action.KyuShuKyuHai
                         desired_action_tile_id = None
-                    elif action == NOOP:
+                    elif action == PASS_RIICHI:
                         desired_action_type = mp.Action.Play
                         desired_action_tile_id = self.riichi_tile_id
                         action = self.riichi_tile_id
@@ -851,7 +864,7 @@ class EnvMahjong3(gym.Env):
                     # Does not need to do anything
                     pass
 
-                elif action == ADDKAN:
+                elif action == KAKAN:
                     # --------------- update game states  -------------
                     side_tiles_added_by_naru = [[kan_tile_id * 4, 0]]  # because aka only 1
 
@@ -949,13 +962,13 @@ class EnvMahjong3(gym.Env):
                 desired_action_type = mp.Action.Kan
             elif action in [CHILEFT, CHIMIDDLE, CHIRIGHT]:
                 desired_action_type = mp.Action.Chi
-            elif action == NOOP:
+            elif action == PASS_RESPONSE:
                 desired_action_type = mp.Action.Pass
             else:
                 raise ValueError
 
             response_action_no = 0
-            if action in [PON, MINKAN, NOOP]:
+            if action in [PON, MINKAN, PASS_RESPONSE]:
                 for response_action in aval_response_actions:
                     if response_action.action == desired_action_type:
                         break
@@ -1038,7 +1051,7 @@ class EnvMahjong3(gym.Env):
                 self.side_tiles[playerNo] += side_tiles_added_by_naru
                 self.prev_step_is_naru = True
 
-            elif action == NOOP:
+            elif action == PASS_RESPONSE:
                 pass
             else:
                 pass
