@@ -378,7 +378,7 @@ class EnvMahjong3(gym.Env):
 
         self.aval_action_obs = np.zeros([34, 8], dtype=np.uint8)
 
-        return self.get_obs(who)
+        return self.get_state()
 
     def get_valid_actions(self, nhot=True):
 
@@ -570,7 +570,9 @@ class EnvMahjong3(gym.Env):
 
     def get_aval_action_obs(self, player_id):
         if not player_id == self.t.who_make_selection():
-            warnings.warn("You are trying to obtain observation from a player who is not making desicion !!!! This is not encouraged!")
+            print("You are trying to obtain observation from a player who is not making decision !!!! This is not encouraged!")
+            print("current player {}, get obs of {}".format(self.t.who_make_selection(), player_id))
+        self.get_valid_actions()
         return self.aval_action_obs
 
     def get_obs(self, player_id):
@@ -902,7 +904,7 @@ class EnvMahjong3(gym.Env):
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
 
-        return self.get_obs(playerNo), reward, done, info
+        return self.get_state(), reward, done, info
 
     def step_response(self, action: int, playerNo: int):
         # response phase
@@ -1057,7 +1059,7 @@ class EnvMahjong3(gym.Env):
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
 
-        return self.get_obs(playerNo), reward, done, info
+        return self.get_state(), reward, done, info
 
     def get_final_score_change(self):
         rewards = np.zeros([4], dtype=np.float32)
