@@ -379,7 +379,7 @@ class EnvMahjong3(gym.Env):
 
         self.is_deciding_riichi = False
         self.can_riichi = False
-        self.do_not_update_hand_tiles_this_time = False
+        self.do_not_update_hand_and_latest_tiles_this_time = False
         self.prev_step_is_naru = False
         self.riichi_tile_id = -1
         self.curr_valid_actions = []
@@ -409,7 +409,7 @@ class EnvMahjong3(gym.Env):
 
             if self.is_deciding_riichi:
                 self.curr_valid_actions += [RIICHI, PASS_RIICHI]
-                self.aval_action_obs[int(self.latest_tile / 4), RIICHI_ACT_IND] = 1
+                self.aval_action_obs[self.riichi_tile_id, RIICHI_ACT_IND] = 1
 
             else:
                 for act in aval_actions:
@@ -644,7 +644,7 @@ class EnvMahjong3(gym.Env):
             # old_hand_tiles_player = deepcopy(self.hand_tiles[playerNo])
             # old_hand_tiles_id_player = np.array([int(ht / 4) for ht in old_hand_tiles_player])
 
-            if not self.do_not_update_hand_tiles_this_time:
+            if not self.do_not_update_hand_and_latest_tiles_this_time:
                 self.hand_tiles = [[], [], [], []]
                 for pid in range(4):
                     for i in range(len(self.t.players[pid].hand)):
@@ -659,8 +659,8 @@ class EnvMahjong3(gym.Env):
                 #     print("Hand Tiles ID from Table:", hand_tiles_id_player)
                 #     print("Hand Tiles ID from Old:", old_hand_tiles_id_player)
 
-            if self.t.get_phase() < 4:
-                self.latest_tile = self.hand_tiles[playerNo][-1]
+                if self.t.get_phase() < 4:
+                    self.latest_tile = self.hand_tiles[playerNo][-1]
         else:
             pass
             # print("This game has ended!")
@@ -673,6 +673,7 @@ class EnvMahjong3(gym.Env):
 
     def step_play(self, action, playerNo, riichi=False):
         # self action phase
+        action = int(action)
 
         # -------------------- update latest tile for drawing a tile ----------
         self.update_hand_and_latest_tiles()
@@ -704,7 +705,11 @@ class EnvMahjong3(gym.Env):
             warnings.warn("Can win, automatically choose to win !!")
             self.t.make_selection(win_action_no)
             desired_action_type = mp.Action.Tsumo
-            self.do_not_update_hand_tiles_this_time = False
+            self.do_not_update_hand_and_latest_tiles_this_time = False
+        elif action == TSUMO:
+            self.t.make_selection(win_action_no)
+            desired_action_type = mp.Action.Tsumo
+            self.do_not_update_hand_and_latest_tiles_this_time = False
         else:
             self.can_riichi = False
             self.can_riichi_tiles_id = []
@@ -714,19 +719,19 @@ class EnvMahjong3(gym.Env):
                     self.can_riichi_tiles_id.append(int(act.correspond_tiles[0].tile))
 
             if self.can_riichi and action < 34 and (not self.is_deciding_riichi) and (action in self.can_riichi_tiles_id):
-                self.riichi_tile_id = action
+                self.riichi_tile_id = int(action)
                 self.is_deciding_riichi = True
 
                 reward = 0
                 done = 0
 
                 # ------ update state -------
+                self.update_hand_and_latest_tiles()
 
                 if self.riichi_tile_id == int(self.hand_tiles[playerNo][-1] / 4):
                     is_from_hand = 1
                 else:
                     is_from_hand = 0
-                is_riichi = 0
 
                 discard_tile_id = action
 
@@ -742,14 +747,14 @@ class EnvMahjong3(gym.Env):
                 if not correctly_discarded:
                     raise ValueError
 
-                self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+                self.river_tiles[playerNo].append([removed_tile, is_from_hand, 0])
 
                 # remove from hand tiles
-                self.do_not_update_hand_tiles_this_time = True
+                self.do_not_update_hand_and_latest_tiles_this_time = True
                 self.latest_tile = removed_tile
 
             else:
-                self.do_not_update_hand_tiles_this_time = False
+                self.do_not_update_hand_and_latest_tiles_this_time = False
                 self.update_hand_and_latest_tiles()
 
                 if self.force_riichi:
@@ -814,6 +819,7 @@ class EnvMahjong3(gym.Env):
                     print(desired_action_tile_id)
                     print(act.action)
                     print(desired_action_type)
+                    raise ValueError
                 assert has_valid_action is True
 
                 self.t.make_selection(action_no)
@@ -849,12 +855,7 @@ class EnvMahjong3(gym.Env):
                         if not correctly_discarded and not self.is_deciding_riichi:
                             raise ValueError
 
-                        if riichi:
-                            is_riichi = 1
-                        else:
-                            is_riichi = 0
-
-                        self.river_tiles[playerNo].append([removed_tile, is_from_hand, is_riichi])
+                        self.river_tiles[playerNo].append([removed_tile, is_from_hand, 0])
                         self.latest_tile = removed_tile
 
                     elif desired_action_type == mp.Action.Riichi:  # discard already done
@@ -922,6 +923,7 @@ class EnvMahjong3(gym.Env):
     def step_response(self, action: int, playerNo: int):
         # response phase
         # action now is an int from 0 to 45
+        action = int(action)
 
         # -------------------- update latest tile for drawing a tile ----------
         self.update_hand_and_latest_tiles()
@@ -964,11 +966,15 @@ class EnvMahjong3(gym.Env):
                 desired_action_type = mp.Action.Chi
             elif action == PASS_RESPONSE:
                 desired_action_type = mp.Action.Pass
+                if can_win:
+                    print("见逃！！！")
+            elif action == RON:
+                desired_action_type = mp.Action.Ron
             else:
                 raise ValueError
 
             response_action_no = 0
-            if action in [PON, MINKAN, PASS_RESPONSE]:
+            if action in [PON, MINKAN, PASS_RESPONSE, RON]:
                 for response_action in aval_response_actions:
                     if response_action.action == desired_action_type:
                         break
