@@ -251,7 +251,7 @@ def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game
 
         hand_indices_obs = np.concatenate([all_obs_0p[:, :player_i_side_start_ind[0]],
                                            all_obs_0p[:, player_i_hand_start_ind[1]:]], axis=-1)
-        hand_indices_obs_playerk = shift(hand_indices_obs, player_i_hand_start_ind[2] - player_i_hand_start_ind[1])
+        hand_indices_obs_playerk = shift(hand_indices_obs, int(k * (player_i_hand_start_ind[2] - player_i_hand_start_ind[1])))
 
         all_obs_kp[:, :player_i_side_start_ind[0]] = hand_indices_obs_playerk[:, :player_i_side_start_ind[0]]
 
