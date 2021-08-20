@@ -265,8 +265,6 @@ def generate_obs(playerNo, hand_tiles, river_tiles, side_tiles, dora_tiles, game
             all_obs_0p[:, player_i_river_start_ind[0]:dora_indicator_ind],
             player_i_river_start_ind[k] - player_i_river_start_ind[0])
 
-        all_obs_kp[:, :6] = all_obs_0p[:, player_i_hand_start_ind[k]:player_i_hand_start_ind[k] + 6]
-
         return all_obs_kp
 
 
