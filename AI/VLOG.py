@@ -29,31 +29,50 @@ INFINITY = 1e9
 #             x = x.transpose(1, 2)
 #         return x
 
-def augment_mahjong_data(x):
+def augment_mahjong_data(x, a, mask):
     assert x.shape[-1] == 34
 
-    agumented_ind = - np.ones([34], dtype=np.int64)
+    agumented_ind = 188 * np.ones([34], dtype=np.int64)
 
     mps_permu = np.random.permutation(3)
 
-    agumented_ind[0:9] = mps_permu[0] * 9 + np.arange(9)
-    agumented_ind[9:18] = mps_permu[1] * 9 + np.arange(9)
-    agumented_ind[18:27] = mps_permu[2] * 9 + np.arange(9)
+    if np.random.rand() < 0.5:
+        lalala = np.flip(np.arange(9))
+    else:
+        lalala = np.arange(9)
+
+    agumented_ind[0:9] = mps_permu[0] * 9 + lalala
+    agumented_ind[9:18] = mps_permu[1] * 9 + lalala
+    agumented_ind[18:27] = mps_permu[2] * 9 + lalala
 
     agumented_ind[27:31] = np.random.permutation(4) + 27
     agumented_ind[31:34] = np.random.permutation(3) + 31
 
-    return x[:, :, agumented_ind]
+    agumented_ind_a = 188 * np.ones([mask.shape[-1]], dtype=np.int64)
+    agumented_ind_a[:34] = agumented_ind
+    agumented_ind_a[34:] = np.arange(34, mask.shape[-1])
+
+    a_one_hot_augmented = F.one_hot(a, num_classes=mask.shape[-1])[:, agumented_ind_a]
+    a_augmented = torch.argmax(a_one_hot_augmented, dim=-1, keepdim=False)
+
+    return x[:, :, agumented_ind], a_augmented, mask[:, agumented_ind_a]
 
 
 class MahjongEqualNet(nn.Module):
-    def __init__(self, n_channels, batch_norm_tau=0):
+    def __init__(self, n_channels, batch_norm_tau=0, aug_flip=False):
         super(MahjongEqualNet, self).__init__()
 
         self.n_channels = n_channels
 
+        self.aug_flip = aug_flip
+
         mps_cnn_list = nn.ModuleList()
         mps_cnn_list.append(nn.Conv2d(n_channels, 64, (3, 1), (1, 1), (1, 0)))
+
+        if batch_norm_tau:
+            mps_cnn_list.append(nn.BatchNorm2d(64, momentum=1 / batch_norm_tau))
+
+        mps_cnn_list.append(nn.Conv2d(64, 64, (3, 1), (1, 1), (1, 0)))
 
         if batch_norm_tau:
             mps_cnn_list.append(nn.BatchNorm2d(64, momentum=1 / batch_norm_tau))
@@ -122,7 +141,11 @@ class MahjongEqualNet(nn.Module):
 
         mps = x[:, :, 0:27].reshape([x.size()[0], x.size()[1], 9, 3])
 
-        phi_mps = self.flatten(self.mps_cnn(mps).sum(dim=-1))
+        if (not hasattr(self, "aug_flip")) or (not self.aug_flip):
+            phi_mps = self.flatten(self.mps_cnn(mps).sum(dim=-1))
+        else:
+            phi_mps = self.flatten(self.mps_cnn(mps).sum(dim=-1) + self.mps_cnn(torch.flip(mps, dims=[-2])).sum(dim=-1))
+
         phi_wind = self.wind_mlp(torch.transpose(x[:, :, 27:31], 1, 2).reshape([-1, self.n_channels])).view(
             [-1, 4, 128]).sum(dim=1)
         phi_z = self.z_mlp(torch.transpose(x[:, :, 31:34], 1, 2).reshape([-1, self.n_channels])).view(
@@ -141,6 +164,11 @@ class MahjongNet(nn.Module):
 
         cnn_list = nn.ModuleList()
         cnn_list.append(nn.Conv1d(n_channels, 64, 3, 1, 1))
+
+        if batch_norm_tau:
+            cnn_list.append(nn.BatchNorm1d(64, momentum=1 / batch_norm_tau))
+
+        cnn_list.append(nn.Conv1d(64, 64, 3, 1, 1))
 
         if batch_norm_tau:
             cnn_list.append(nn.BatchNorm1d(64, momentum=1 / batch_norm_tau))
@@ -189,8 +217,10 @@ class DDQN(nn.Module):
             raise NotImplementedError
 
         if isinstance(observation_space, Box) and isinstance(full_observation_space, Box):
+
             self.input_forward_size = [*observation_space.shape]
             self.input_oracle_size = [*full_observation_space.shape]
+
         else:
             raise NotImplementedError
 
@@ -222,7 +252,10 @@ class DDQN(nn.Module):
         self.value_distribution = kwargs["value_distribution"] if ("value_distribution" in kwargs) else "DiracDelta"
 
         self.batch_norm_tau = kwargs["batch_norm_tau"] if ("batch_norm_tau" in kwargs) else 0
+        self.dropout = kwargs["dropout"] if ("dropout" in kwargs) else 0
         self.use_equal_net = kwargs["use_equal_net"] if ("use_equal_net" in kwargs) else True
+
+        self.suphx_style = kwargs["suphx_style"] if ("suphx_style" in kwargs) else False
 
         if "device" in kwargs:
             self.device = kwargs["device"]
@@ -279,6 +312,8 @@ class DDQN(nn.Module):
             if self.batch_norm_tau:
                 forward_fnns.append(BatchNorm1d(num_features=self.hidden_layer_width, momentum=1 / self.batch_norm_tau))
             forward_fnns.append(self.forward_act_fn())
+            if self.dropout:
+                forward_fnns.append(nn.Dropout(p=self.dropout))
             last_layer_size = self.hidden_layer_width
         self.forward_fnn = nn.Sequential(*forward_fnns)
         self.latent_module.append(self.forward_fnn)
@@ -287,26 +322,40 @@ class DDQN(nn.Module):
 
         if not self.z_size == 0:
             if self.z_deterministic_size:
-                if self.batch_norm_tau:
-                    self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size),
-                                                    BatchNorm1d(num_features=self.z_deterministic_size,
-                                                                   momentum=1 / self.batch_norm_tau),
-                                                    )
+                if self.use_prior_only:
+                    if self.batch_norm_tau:
+                        self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size),
+                                                        BatchNorm1d(num_features=self.z_deterministic_size,
+                                                                    momentum=1 / self.batch_norm_tau),
+                                                        self.forward_act_fn(),
+                                                        nn.Dropout(p=self.dropout)
+                                                        )
+                    else:
+                        self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size),
+                                                        self.forward_act_fn(),
+                                                        nn.Dropout(p=self.dropout)
+                                                        )
+
                 else:
-                    self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size)
-                                                    )
+                    if self.batch_norm_tau:
+                        self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size),
+                                                        BatchNorm1d(num_features=self.z_deterministic_size,
+                                                                    momentum=1 / self.batch_norm_tau),
+                                                        )
+                    else:
+                        self.f_h2zp_det = nn.Sequential(nn.Linear(pre_zp_size, self.z_deterministic_size)
+                                                        )
                 self.latent_module.append(self.f_h2zp_det)
             if self.z_stochastic_size:
-
                 if self.batch_norm_tau:
                     self.f_h2muzp = nn.Sequential(nn.Linear(pre_zp_size, self.z_stochastic_size),
                                                   BatchNorm1d(num_features=self.z_stochastic_size,
-                                                                 momentum=1 / self.batch_norm_tau)
+                                                              momentum=1 / self.batch_norm_tau)
                                                   )
 
                     self.f_h2logsigzp = nn.Sequential(nn.Linear(pre_zp_size, self.z_stochastic_size),
                                                       BatchNorm1d(num_features=self.z_stochastic_size,
-                                                                     momentum=1 / self.batch_norm_tau),
+                                                                  momentum=1 / self.batch_norm_tau),
                                                       MinusOneModule()
                                                       )
                 else:
@@ -327,6 +376,8 @@ class DDQN(nn.Module):
             if self.batch_norm_tau:
                 oracle_fnns.append(BatchNorm1d(num_features=self.hidden_layer_width, momentum=1 / self.batch_norm_tau))
             oracle_fnns.append(self.forward_act_fn())
+            if self.dropout:
+                oracle_fnns.append(nn.Dropout(p=self.dropout))
             last_layer_size = self.hidden_layer_width
 
         self.oracle_fnn = nn.Sequential(*oracle_fnns)
@@ -393,10 +444,9 @@ class DDQN(nn.Module):
             self.optimizer_q = torch.optim.Adam(self.parameters(), lr=self.lr)
 
         elif self.algorithm == 'bc':
-            self.dropout = self.alg_config["dropout"] if ("dropout" in self.alg_config) else 0
             self.f_s2pi0 = DiscreteActionPolicyNetwork(pre_rl_size, self.action_size, batch_norm_tau=self.batch_norm_tau,
                                                        hidden_layers=[self.hidden_layer_width] * self.half_hidden_layer_depth,
-                                                       act_fn=self.forward_act_fn, device=self.device)
+                                                       act_fn=self.forward_act_fn, dropout=self.dropout, device=self.device)
             self.alg_type = 'supervised'
             self.ce_loss = nn.CrossEntropyLoss(reduction='none')
             self.optimizer_a = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -407,7 +457,7 @@ class DDQN(nn.Module):
         self.mse_loss = nn.MSELoss()
 
         if (not self.use_prior_only):
-            self.optimizer_b = torch.optim.SGD([self.log_beta], lr=self.lr)
+            self.optimizer_b = torch.optim.Adam([self.log_beta], lr=self.lr)
 
         self.to(device=self.device)
 
@@ -436,27 +486,45 @@ class DDQN(nn.Module):
     def init_states(self):
         pass
 
-    def select(self, x, action_mask=None, greedy=False, need_other_info=False):
+    def select(self, x, action_mask=None, greedy=False, need_other_info=False, use_posterior=False):
 
         with torch.no_grad():
-            if isinstance(x, np.ndarray):
-                x = torch.from_numpy(x.astype(np.float32).reshape([1, *list(x.shape)])).to(device=self.device)
-            x = self.encoder(x)
 
             if action_mask is not None:
                 if isinstance(action_mask, np.ndarray):
                     action_mask = torch.from_numpy(
                         action_mask.astype(np.float32).reshape([1, self.action_size]))
 
-            e = self.forward_fnn(x)
-            if self.z_stochastic_size > 0:
-                muz = self.f_h2muzp(e)
-                logsigz = self.f_h2logsigzp(e)
-                dist = dis.normal.Normal(muz, torch.exp(logsigz))
-                z = dist.sample()
+            if isinstance(x, np.ndarray):
+                x = torch.from_numpy(x.astype(np.float32).reshape([1, *list(x.shape)])).to(device=self.device)
 
-            elif self.z_deterministic_size > 0:
-                z = self.f_h2zp_det(e)
+            if use_posterior and self.use_prior_only:
+                warnings.warn("use_posterior does not works for non-VLOG model!")
+
+            if (not use_posterior) or self.use_prior_only:
+
+                x = self.encoder(x)
+                e = self.forward_fnn(x)
+                if self.z_stochastic_size > 0:
+                    muz = self.f_h2muzp(e)
+                    logsigz = self.f_h2logsigzp(e)
+                    dist = dis.normal.Normal(muz, torch.exp(logsigz))
+                    z = dist.sample()
+
+                elif self.z_deterministic_size > 0:
+                    z = self.f_h2zp_det(e)
+
+            else:
+                x = self.encoder_oracle(x)
+                e = self.oracle_fnn(x)
+                if self.z_stochastic_size > 0:
+                    muz = self.f_hb2muzq(e)
+                    logsigz = self.f_hb2logsigzq(e)
+                    dist = dis.normal.Normal(muz, torch.exp(logsigz))
+                    z = dist.sample()
+
+                elif self.z_deterministic_size > 0:
+                    z = self.f_hb2zq_det(e)
 
             self.h_t = z
 
@@ -493,29 +561,69 @@ class DDQN(nn.Module):
         else:
             return a, self.h_t, self.zp_tm1
 
-    def learn_bc(self, X, O, A, V, action_masks=None, full_obs=False, mahjong_augment=False):
+    def learn_bc(self, X, O, A, V, action_masks=None, full_obs=False, self_reg=False, mahjong_augment=False, suphx_gamma=0):
         batch_size = A.shape[0]
         start_time = time.time()
 
-        x_oracle = torch.from_numpy(np.concatenate([X, O], axis=-2).astype(np.float32)).to(device=self.device)
+        if isinstance(X, np.ndarray):
 
-        if not full_obs:
-            x = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
+            if not self_reg:
+
+                if self.suphx_style:
+                    oracle_mask = np.random.binomial(n=1, p=suphx_gamma, size=O.shape)
+                else:
+                    oracle_mask = np.ones_like(O)
+
+                x_oracle = torch.from_numpy(np.concatenate([X, oracle_mask * O], axis=-2).astype(np.float32)).to(device=self.device)
+            else:
+                x_oracle = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
+
+            if not full_obs:
+                x = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
+            else:
+                x = x_oracle
+
+            if action_masks is not None:
+                m = torch.from_numpy(action_masks.astype(np.float32)).to(device=self.device)
+            else:
+                m = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
+
+            a = torch.from_numpy(A.astype(np.int)).to(device=self.device)
+            v = torch.from_numpy(V.astype(np.float32)).to(device=self.device)
         else:
-            x = x_oracle
+            if not self_reg:
+
+                if self.suphx_style:
+                    if suphx_gamma > 0:
+                        oracle_mask = torch.bernoulli(suphx_gamma * torch.ones_like(O))
+                    else:
+                        oracle_mask = torch.zeros_like(O)
+                else:
+                    oracle_mask = torch.ones_like(O)
+
+                x_oracle = torch.cat([X, oracle_mask * O], dim=-2).to(torch.float32)
+            else:
+                x_oracle = X.to(torch.float32)
+
+            if not full_obs:
+                x = X.to(torch.float32)
+            else:
+                x = x_oracle
+
+            if action_masks is not None:
+                m = action_masks.to(torch.float32)
+            else:
+                m = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
+
+            v = V.to(torch.float32)
+            a = A.to(torch.int64)
 
         if mahjong_augment:
-            all_obs_concat = augment_mahjong_data(torch.cat([x, x_oracle], dim=-2))
+            all_obs_concat, a, m = augment_mahjong_data(torch.cat([x, x_oracle], dim=-2), a, m)
             x = all_obs_concat[:, :x.shape[-2], :]
             x_oracle = all_obs_concat[:, -x_oracle.shape[-2]:, :]
 
-        if action_masks is not None:
-            m = torch.from_numpy(action_masks.astype(np.float32)).to(device=self.device)
-
         self.train()
-
-        a = torch.from_numpy(A.astype(np.int)).to(device=self.device)
-        v = torch.from_numpy(V.astype(np.float32)).to(device=self.device)
 
         phi = self.encoder(x)
         phi_oracle = self.encoder_oracle(x_oracle)
@@ -572,7 +680,7 @@ class DDQN(nn.Module):
         if not self.use_prior_only:
             if self.z_stochastic_size == 0 and self.z_deterministic_size > 0:
 
-                loss_z = 1. / self.action_size * torch.mean(
+                kld = 1. / self.action_size * torch.mean(
                     torch.sum(0.5 * (zq_tensor - zp_tensor).pow(2), dim=-1) * v)  # deterministic z only
 
                 if self.verbose and np.random.rand() < 0.005 * self.verbose:
@@ -596,37 +704,33 @@ class DDQN(nn.Module):
                                           precision=4, separator=', ')
                     print("sigzq = " + tmp)
 
-                loss_z = torch.mean(
+                kld = torch.mean(
                     torch.sum(logsigzp_tensor - logsigzq_tensor + ((muzp_tensor - muzq_tensor).pow(2) + torch.exp(
                         logsigzq_tensor * 2)) / (2.0 * torch.exp(logsigzp_tensor * 2)) - 0.5, dim=-1) * v)
 
-                loss_z = 1. / self.action_size * loss_z
             else:
                 raise NotImplementedError
         else:
-            loss_z = torch.tensor(0)
+            kld = torch.tensor(0)
 
-        if (not self.use_prior_only) and (self.kld_target >= 0) and torch.sum(v).item() > 0:
-            kld = (loss_z * self.action_size).data
+        if (not self.use_prior_only) and self.verbose and np.random.rand() < 0.005 * self.verbose:
+            print("beta = {}, kld = {}, kld_target= {}".format(
+                np.exp(self.log_beta.item()), kld.detach().item(), self.kld_target))
 
-        a_predict = self.f_s2pi0(h_tensor)
-        loss_a = torch.mean(self.ce_loss(a_predict, a) * v)
+        logit_a_predict = self.f_s2pi0(h_tensor)
+        loss_a = torch.mean(self.ce_loss(logit_a_predict, a) * v)
         loss_critic = torch.tensor(0)
 
         self.optimizer_a.zero_grad()
         if not self.use_prior_only:
-            (torch.exp(self.log_beta.detach()) * loss_z + loss_a).backward()
+            (torch.exp(self.log_beta.detach()) * kld / self.action_size + loss_a).backward()
         else:
             loss_a.backward()
         self.optimizer_a.step()
 
-        if (not self.use_prior_only) and (self.kld_target >= 0) and torch.sum(v).item() > 0:
+        if (not self.use_prior_only) and self.alpha and (self.kld_target > 0) and torch.sum(v).item() > 0:
             loss_beta = - torch.mean(self.log_beta * self.alpha * (
                     torch.log10(torch.clamp(kld, 1e-9, np.inf)) - np.log10(self.kld_target)).detach())
-
-            if self.verbose and np.random.rand() < 0.005 * self.verbose:
-                print("log beta = {}, kld = {}, kld_target= {}".format(
-                    self.log_beta.item(), kld.detach().item(), self.kld_target))
 
             self.optimizer_b.zero_grad()
             loss_beta.backward()
@@ -639,39 +743,89 @@ class DDQN(nn.Module):
 
         self.update_times += 1
 
-        return loss_z.cpu().item(), loss_critic.cpu().item(), loss_a.cpu().item()
+        return kld.cpu().item(), loss_critic.cpu().item(), loss_a.cpu().item()
 
-    def learn(self, X, XP, O, OP, A, R, D, V, action_masks=None, action_masks_tp1=None, full_obs=False, mahjong_augment=False):
+    def learn(self, X, XP, O, OP, A, R, D, V, action_masks=None, action_masks_tp1=None,
+              full_obs=False, self_reg=False, mahjong_augment=False, suphx_gamma=0):
 
         batch_size = A.shape[0]
         start_time = time.time()
 
-        x_oracle = torch.from_numpy(np.concatenate([X, O], axis=-2).astype(np.float32)).to(device=self.device)
-        xp_oracle = torch.from_numpy(np.concatenate([XP, OP], axis=-2).astype(np.float32)).to(device=self.device)
+        if isinstance(X, np.ndarray):
+            if not self_reg:
 
-        if not full_obs:
-            x = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
-            xp = torch.from_numpy(XP.astype(np.float32)).to(device=self.device)
+                if self.suphx_style:
+                    oracle_mask = np.random.binomial(n=1, p=suphx_gamma, size=O.shape)
+                else:
+                    oracle_mask = np.ones_like(O)
+
+                x_oracle = torch.from_numpy(np.concatenate([X, oracle_mask * O], axis=-2).astype(np.float32)).to(device=self.device)
+                xp_oracle = torch.from_numpy(np.concatenate([XP, oracle_mask * OP], axis=-2).astype(np.float32)).to(device=self.device)
+            else:
+                x_oracle = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
+                xp_oracle = torch.from_numpy(XP.astype(np.float32)).to(device=self.device)
+
+            if not full_obs:
+                x = torch.from_numpy(X.astype(np.float32)).to(device=self.device)
+                xp = torch.from_numpy(XP.astype(np.float32)).to(device=self.device)
+            else:
+                x = x_oracle
+                xp = xp_oracle
+
+            a = torch.from_numpy(A.astype(np.int)).to(device=self.device)
+            r = torch.from_numpy(R.astype(np.float32)).to(device=self.device)
+            d = torch.from_numpy(D.astype(np.float32)).to(device=self.device)
+            v = torch.from_numpy(V.astype(np.float32)).to(device=self.device)
+
+            if action_masks is not None:
+                m = torch.from_numpy(action_masks.astype(np.float32)).to(device=self.device)
+                mp = torch.from_numpy(action_masks_tp1.astype(np.float32)).to(device=self.device)
+            else:
+                m = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
+                mp = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
         else:
-            x = x_oracle
-            xp = xp_oracle
+            if not self_reg:
+
+                if self.suphx_style:
+                    if suphx_gamma > 0:
+                        oracle_mask = torch.bernoulli(suphx_gamma * torch.ones_like(O))
+                    else:
+                        oracle_mask = torch.zeros_like(O)
+                else:
+                    oracle_mask = torch.ones_like(O)
+
+                x_oracle = torch.cat([X, oracle_mask * O], dim=-2).to(torch.float32)  # TODO: dim should be feature dim
+                xp_oracle = torch.cat([XP, oracle_mask * OP], dim=-2).to(torch.float32)
+            else:
+                x_oracle = X.to(torch.float32)
+                xp_oracle = XP.to(torch.float32)
+
+            if not full_obs:
+                x = X.to(torch.float32)
+                xp = XP.to(torch.float32)
+            else:
+                x = x_oracle
+                xp = xp_oracle
+
+            if action_masks is not None:
+                m = action_masks.to(torch.float32)
+                mp = action_masks_tp1.to(torch.float32)
+            else:
+                m = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
+                mp = torch.ones([batch_size, self.action_size], device=self.device).to(torch.float32)
+
+            v = V.to(torch.float32)
+            a = A.to(torch.int64)
+            d = D.to(torch.float32)
+            r = R.to(torch.float32)
 
         if mahjong_augment:
-            all_obs_concat = augment_mahjong_data(torch.cat([x, xp, x_oracle, xp_oracle], dim=-2))
+            all_obs_concat, a, mp = augment_mahjong_data(torch.cat([x, xp, x_oracle, xp_oracle], dim=-2), a, mp)
 
             x = all_obs_concat[:, :x.shape[-2], :]
             xp = all_obs_concat[:, x.shape[-2]: int(2 * x.shape[-2]), :]
             x_oracle = all_obs_concat[:, int(2 * x.shape[-2]): int(2 * x.shape[-2] + x_oracle.shape[-2]), :]
             xp_oracle = all_obs_concat[:, int(2 * x.shape[-2] + x_oracle.shape[-2]):, :]
-
-        a = torch.from_numpy(A.astype(np.int)).to(device=self.device)
-        r = torch.from_numpy(R.astype(np.float32)).to(device=self.device)
-        d = torch.from_numpy(D.astype(np.float32)).to(device=self.device)
-        v = torch.from_numpy(V.astype(np.float32)).to(device=self.device)
-
-        if action_masks is not None:
-            m = torch.from_numpy(action_masks.astype(np.float32)).to(device=self.device)
-            mp = torch.from_numpy(action_masks_tp1.astype(np.float32)).to(device=self.device)
 
         # print(x.shape)
 
@@ -801,7 +955,7 @@ class DDQN(nn.Module):
         if not self.use_prior_only:
             if self.z_stochastic_size == 0 and self.z_deterministic_size > 0:
 
-                loss_z = 1. / self.action_size * torch.mean(
+                kld = 1. / self.action_size * torch.mean(
                     torch.sum(0.5 * (zq_tensor - zp_tensor).pow(2), dim=-1) * v)  # deterministic z only
 
                 if self.verbose and np.random.rand() < 0.005 * self.verbose:
@@ -825,15 +979,13 @@ class DDQN(nn.Module):
                                           precision=4, separator=', ')
                     print("sigzq = " + tmp)
 
-                loss_z = torch.mean(
+                kld = torch.mean(
                     torch.sum(logsigzp_tensor - logsigzq_tensor + ((muzp_tensor - muzq_tensor).pow(2) + torch.exp(
                         logsigzq_tensor * 2)) / (2.0 * torch.exp(logsigzp_tensor * 2)) - 0.5, dim=-1) * v)
-
-                loss_z = 1. / self.action_size * loss_z
             else:
                 raise NotImplementedError
         else:
-            loss_z = torch.tensor(0)
+            kld = torch.tensor(0)
 
         self.eval()
         # ------------ compute (posterior) value prediction loss  -------------
@@ -872,17 +1024,21 @@ class DDQN(nn.Module):
             self.eval()
 
             if self.use_cql:
-                loss_cql = self.cql_alpha * torch.mean(torch.logsumexp(self.f_s2q1(h_tensor), dim=-1)
-                                                       - torch.sum(a_one_hot * self.f_s2q1(h_tensor), dim=-1))
+                loss_cql = self.cql_alpha * torch.mean(torch.logsumexp(self.f_s2q1(h_tensor), dim=-1) * v
+                                                       - torch.sum(a_one_hot * self.f_s2q1(h_tensor), dim=-1) * v)
+                if self.f_s2q1.output_distribution == "Gaussian":
+                    loss_cql = loss_cql / (np.exp(-3) ** 2)
+
             else:
                 loss_cql = 0
 
             # loss_critic = 0.5 * self.mse_loss(torch.sum(q_tensor * a_one_hot, dim=-1) * v, q_target * v)
 
-            if (not self.use_prior_only) and (self.kld_target >= 0) and torch.sum(v).item() > 0:
-                kld = (loss_z * self.action_size).data
+            if (not self.use_prior_only) and self.verbose and np.random.rand() < 0.005 * self.verbose:
+                print("beta = {}, kld = {}, kld_target= {}".format(
+                    np.exp(self.log_beta.item()), kld.detach().item(), self.kld_target))
 
-            elif (not self.use_prior_only) and self.alpha and torch.sum(v).item() > 0:
+            if (not self.use_prior_only) and self.alpha and torch.sum(v).item() > 0:
                 q_prior_expanded = self.f_s2q1(hp_tensor).detach()
                 q_posterior_expanded = self.f_s2q1(h_tensor).detach()
 
@@ -900,7 +1056,7 @@ class DDQN(nn.Module):
             self.optimizer_q.zero_grad()
 
             if not self.use_prior_only:
-                (torch.exp(self.log_beta.detach()) * loss_z + loss_critic + loss_cql).backward()  # 2 * loss_z because value and policy both have KLD loss
+                (torch.exp(self.log_beta.detach()) * kld + loss_critic + loss_cql).backward()
             else:
                 (loss_critic + loss_cql).backward()
 
@@ -908,13 +1064,9 @@ class DDQN(nn.Module):
 
             loss_a = torch.tensor(0)
 
-            if (not self.use_prior_only) and (self.kld_target >= 0) and torch.sum(v).item() > 0:
+            if (not self.use_prior_only) and self.alpha and (self.kld_target > 0) and torch.sum(v).item() > 0:
                 loss_beta = - torch.mean(self.log_beta * self.alpha * (
                         torch.log10(torch.clamp(kld, 1e-9, np.inf)) - np.log10(self.kld_target)).detach())
-
-                if self.verbose and np.random.rand() < 0.005 * self.verbose:
-                    print("log beta = {}, kld = {}, kld_target= {}".format(
-                        self.log_beta.item(), kld.detach().item(), self.kld_target))
 
                 self.optimizer_b.zero_grad()
                 loss_beta.backward()
@@ -955,10 +1107,9 @@ class DDQN(nn.Module):
 
         # --------------- end ddqn -----------------
 
-
         if self.update_times < 10:
             print("training time:", time.time() - start_time)
 
         self.update_times += 1
 
-        return loss_z.cpu().item(), loss_critic.cpu().item(), loss_a.cpu().item()
+        return kld.cpu().item(), loss_critic.cpu().item(), loss_a.cpu().item()
