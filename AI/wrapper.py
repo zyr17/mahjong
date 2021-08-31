@@ -304,8 +304,10 @@ class EnvMahjong3(gym.Env):
             self.scores_init[i] = self.t.players[i].score
 
         self.scores_before = np.zeros([4], dtype=np.float32)
+        self.scores_reset = np.zeros([4], dtype=np.float32)
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
+            self.scores_reset[i] = self.t.players[i].score
 
         if not self.append_aval_action_obs:
             self.observation_space = Box(low=0, high=4, shape=[63, 34])
@@ -313,6 +315,8 @@ class EnvMahjong3(gym.Env):
         else:
             self.observation_space = Box(low=0, high=4, shape=[63 + 12, 34])
             self.full_observation_space = Box(low=0, high=4, shape=[81 + 12, 34])
+
+        self.oracle_observation_space = Box(low=0, high=4, shape=[18, 34])
 
         self.action_space = Discrete(47)
 
@@ -339,8 +343,10 @@ class EnvMahjong3(gym.Env):
             self.scores_init[i] = self.t.players[i].score
 
         self.scores_before = np.zeros([4], dtype=np.float32)
+        self.scores_reset = np.zeros([4], dtype=np.float32)
         for i in range(4):
             self.scores_before[i] = self.t.players[i].score
+            self.scores_reset[i] = self.t.players[i].score
 
         # ---------------- Table raw state ----------------
         self.curr_all_obs = np.zeros([4, 34, 81])
@@ -589,8 +595,8 @@ class EnvMahjong3(gym.Env):
     def get_obs(self, player_id):
         self.update_hand_and_latest_tiles()
 
-        player_wind_obs = np.zeros([34])
-        player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
+        # player_wind_obs = np.zeros([34])
+        # player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
 
         self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
@@ -605,8 +611,8 @@ class EnvMahjong3(gym.Env):
     def get_full_obs(self, player_id):
         self.update_hand_and_latest_tiles()
 
-        player_wind_obs = np.zeros([34])
-        player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
+        # player_wind_obs = np.zeros([34])
+        # player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
 
         self.curr_all_obs[player_id] = generate_obs(player_id,
             self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
@@ -618,6 +624,18 @@ class EnvMahjong3(gym.Env):
                                    self.curr_all_obs[player_id, :, -18:].swapaxes(0, 1)], axis=-2)
         else:
             return self.curr_all_obs[player_id].swapaxes(0, 1)
+
+    def get_oracle_obs(self, player_id):
+        self.update_hand_and_latest_tiles()
+
+        # player_wind_obs = np.zeros([34])
+        # player_wind_obs[27 + (8 - self.oya_id + player_id) % 4] = 1
+
+        self.curr_all_obs[player_id] = generate_obs(player_id,
+            self.hand_tiles, self.river_tiles, self.side_tiles, self.dora_tiles,
+            self.game_wind, self.oya_id, latest_tile=self.latest_tile)
+
+        return self.curr_all_obs[player_id, :, -18:].swapaxes(0, 1)
 
     def get_state(self):
         # get raw state
@@ -1082,7 +1100,7 @@ class EnvMahjong3(gym.Env):
         rewards = np.zeros([4], dtype=np.float32)
 
         for i in range(4):
-            rewards[i] = self.t.get_result().score[i] - self.scores_before[i]
+            rewards[i] = self.t.get_result().score[i] - self.scores_reset[i]
 
         shanten_num = np.zeros([4])
         if self.t.get_remain_tile() == 0 and np.max(rewards) == 0:  # 荒牌流局 计算罚符
