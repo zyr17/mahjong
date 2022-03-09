@@ -266,10 +266,10 @@ public:
 			ret = "[" + std::to_string(static_cast<int>(tile) + 1) + "m";
 		}
 		else if (9 <= tile && tile <= 17) {
-			ret = "[" + std::to_string(static_cast<int>(tile) - 8) + "s";
+			ret = "[" + std::to_string(static_cast<int>(tile) - 8) + "p";
 		}
 		else if (18 <= tile && tile <= 26) {
-			ret = "[" + std::to_string(static_cast<int>(tile) - 17) + "p";
+			ret = "[" + std::to_string(static_cast<int>(tile) - 17) + "s";
 		}
 		else if (tile == east) {
 			ret = "[东";

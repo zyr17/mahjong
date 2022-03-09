@@ -4,6 +4,8 @@
 namespace_mahjong
 using namespace std;
 
+static BaseTile 幺九牌[] = {_1m, _9m, _1p, _9p, _1s, _9s, _1z, _2z, _3z, _4z, _5z, _6z, _7z}; 
+
 Player::Player() 
 { }
 
@@ -265,8 +267,8 @@ vector<SelfAction> Player::get_九种九牌()
 
 	static auto get_九牌 = [](const vector<Tile*> &hand) {		
 		vector<Tile*> 九牌collection;
-		for (int i = BaseTile::_1m; i <= BaseTile::_7z; ++i) {
-			auto iter = find_match_tile(hand, BaseTile(i));
+		for (auto t : 幺九牌) {
+			auto iter = find_match_tile(hand, t);
 			if (iter != hand.end()) {
 				九牌collection.push_back(*iter);
 			}

@@ -344,7 +344,7 @@ class EnvMahjong4(gym.Env):
 
     def reset(self, oya, game_wind):
         self.t = self.type()
-        self.t.seed = self.game_count + 1
+        self.t.seed = self.game_count + 50
 
         # oya = np.random.random_integers(0, 3)
         # winds = ['east', 'south', 'west', 'north']
@@ -1179,7 +1179,7 @@ class EnvMahjong4(gym.Env):
             return self.t.who_make_selection(), "play"
 
     def render(self, mode='human'):
-        print("Recent action: ", self.t.get_selected_base_action(), self.t.get_selected_base_action())
+        print("Recent action: ", self.t.get_selected_base_action(), self.t.get_selected_action_tile().tile)
         print("-----------------------------------")
         print("[Player 0]")
         print(self.t.players[0].to_string())

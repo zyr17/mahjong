@@ -594,8 +594,8 @@ void Table::init_yama()
 	}
 
 	dora_spec = 1;
-	里宝牌指示牌 = { 牌山[5],牌山[7],牌山[9],牌山[11],牌山[13] };
-	宝牌指示牌 = { 牌山[4],牌山[6],牌山[8],牌山[10],牌山[12] };
+	宝牌指示牌 = { 牌山[5],牌山[7],牌山[9],牌山[11],牌山[13] };
+	里宝牌指示牌 = { 牌山[4],牌山[6],牌山[8],牌山[10],牌山[12] };
 
 }
 
@@ -1125,10 +1125,12 @@ void Table::发牌(int i_player)
 }
 
 void Table::发岭上牌(int i_player)
-{
-	_deal(i_player);
-	//openGameLog.log摸牌(i_player, nullptr);
-	//fullGameLog.log摸牌(i_player, player[i_player].hand.back());
+{	
+	int n_kan = get_remain_kan_tile();
+	auto iter = 牌山.begin();
+	if (n_kan % 2 == 0) ++iter;
+	players[i_player].hand.push_back(*iter);
+	牌山.erase(iter);
 }
 
 std::string Table::to_string(int option) const
