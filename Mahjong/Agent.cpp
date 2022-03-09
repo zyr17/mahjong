@@ -1,4 +1,4 @@
-﻿#include "mahjong/Agent.h"
+﻿#include "Agent.h"
 
 using namespace std;
 

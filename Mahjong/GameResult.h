@@ -4,7 +4,7 @@
 #include <vector>
 #include <sstream>
 #include <unordered_map>
-#include "mahjong/ScoreCounter.h"
+#include "ScoreCounter.h"
 #include <array>
 
 enum ResultType {

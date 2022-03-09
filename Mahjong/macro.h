@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <string>
 #include "MahjongAlgorithm/Yaku.h"
-#include "mahjong/Tile.h"
+#include "Tile.h"
 
 #define VERBOSE if (verbose)
 #define SORT(player) player.sort_hand();

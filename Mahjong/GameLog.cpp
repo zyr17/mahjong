@@ -1,4 +1,4 @@
-﻿#include "mahjong/GameLog.h"
+﻿#include "GameLog.h"
 #include <sstream>
 
 using namespace std;

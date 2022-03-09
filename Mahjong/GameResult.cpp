@@ -1,8 +1,8 @@
-﻿#include "mahjong/GameResult.h"
-#include "mahjong/Table.h"
-#include "mahjong/ScoreCounter.h"
-#include "mahjong/macro.h"
-#include "mahjong/Rule.h"
+﻿#include "GameResult.h"
+#include "Table.h"
+#include "ScoreCounter.h"
+#include "macro.h"
+#include "Rule.h"
 
 using namespace std;
 

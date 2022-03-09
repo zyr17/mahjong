@@ -1,5 +1,5 @@
-﻿#include "mahjong/GamePlay.h"
-#include "mahjong/macro.h"
+﻿#include "GamePlay.h"
+#include "macro.h"
 
 using namespace std;
 

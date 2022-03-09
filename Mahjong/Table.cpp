@@ -1,9 +1,9 @@
-﻿#include "mahjong/Table.h"
-#include "mahjong/macro.h"
-#include "mahjong/Rule.h"
-#include "mahjong/GameResult.h"
-#include "mahjong/Agent.h"
-#include "mahjong/ScoreCounter.h"
+﻿#include "Table.h"
+#include "macro.h"
+#include "Rule.h"
+#include "GameResult.h"
+#include "Agent.h"
+#include "ScoreCounter.h"
 #include <random>
 using namespace std;
 

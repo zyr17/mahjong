@@ -1,9 +1,9 @@
 ﻿#ifndef RULE_H
 #define RULE_H
 
-#include "mahjong/Tile.h"
-#include "mahjong/macro.h"
-#include "mahjong/Yaku.h"
+#include "Tile.h"
+#include "macro.h"
+#include "Yaku.h"
 #include <functional>
 
 /* Converter & TileGroup Data Structure */

@@ -1,6 +1,6 @@
-﻿#include "mahjong/Rule.h"
-#include "mahjong/macro.h"
-#include "mahjong/Table.h"
+﻿#include "Rule.h"
+#include "macro.h"
+#include "Table.h"
 using namespace std;
 
 std::vector<CompletedTiles> getCompletedTiles(std::vector<BaseTile> tiles)
