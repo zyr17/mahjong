@@ -1,8 +1,8 @@
 ﻿#ifndef AGENT_H
 #define AGENT_H
 
-#include "mahjong/Action.h"
-#include "mahjong/Table.h"
+#include "Action.h"
+#include "Table.h"
 // abstract class of Agent
 
 // For Action Phase

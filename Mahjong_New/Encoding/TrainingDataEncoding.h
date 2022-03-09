@@ -2,7 +2,7 @@
 #define TRAINING_DATA_ENCODING_H
 
 #include <vector>
-#include "Mahjong_New\Table.h"
+#include "Mahjong_New/Table.h"
 
 namespace_mahjong
 

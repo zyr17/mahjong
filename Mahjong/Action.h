@@ -1,7 +1,7 @@
 ﻿#ifndef ACTION_H
 #define ACTION_H
 
-#include "mahjong/Tile.h"
+#include "Mahjong/Tile.h"
 
 enum class Action : uint8_t {
 	// response begin
