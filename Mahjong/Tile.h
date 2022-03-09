@@ -236,6 +236,7 @@ class Tile {
 public:
 	BaseTile tile;
 	bool red_dora;
+	int id;
 
 	inline std::string to_simple_string() const {
 		std::stringstream ss;

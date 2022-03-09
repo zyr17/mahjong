@@ -22,6 +22,8 @@ public:
 	std::vector<Tile*> 宝牌指示牌;
 	std::vector<Tile*> 里宝牌指示牌;
 	int seed = -1;
+	bool write_log = false;
+	std::vector<int> yama_log;
 	
 	// 牌山的起始是岭上牌(0,1,2,3)
 	// 然后标记宝牌和ura的位置(5,7,9,11,13)、(4,6,8,10,12)

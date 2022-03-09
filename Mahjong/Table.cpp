@@ -556,7 +556,7 @@ void Table::init_tiles()
 	for (int i = 0; i < N_TILES; ++i) {
 		tiles[i].tile = static_cast<BaseTile>(i / 4);
 		tiles[i].red_dora = false;
-		// tiles[i].id = i;
+		tiles[i].id = i;
 	}
 }
 
@@ -576,6 +576,12 @@ void Table::shuffle_tiles()
 	else {
 		rng.seed(seed);
 		std::shuffle(tiles, tiles + N_TILES, rng);
+	}
+	if (write_log) {
+		yama_log.reserve(N_TILES);
+		for (auto t : 牌山) {
+			yama_log.push_back(t->id);
+		}
 	}
 }
 
@@ -1950,13 +1956,33 @@ void Table::game_init_with_metadata(std::unordered_map<std::string, std::string>
 	// 初始化每人自风
 	init_wind();
 	turn = 庄家;
+	if (write_log) {
+		auto init_score = {
+			players[0].score,
+			players[1].score,
+			players[2].score,
+			players[3].score,
+		};
+		FILE* fp = fopen("replay.log", "w+");
+		fprintf(fp, "Table table;\ntable.game_init_for_replay(%s, %s, %d, %d, %d, %d);\n",
+			vec2str(yama_log).c_str(),
+			vec2str(init_score).c_str(),
+			N_立直棒, N_本场, 场风, 亲家);
+
+		fclose(fp);
+	}
+
 	_from_beginning();
 }
 
 void Table::make_selection(int selection)
 {
 	// 这个地方控制了游戏流转
-	
+	if (write_log) {
+		FILE* fp = fopen("game.log", "a+");
+		fprintf(fp, "\nmake_selection(%d);", selection);
+		fclose(fp);
+	}
 	// 分为两种情况，如果是ACTION阶段
 	switch (phase) {
 	case P1_ACTION:

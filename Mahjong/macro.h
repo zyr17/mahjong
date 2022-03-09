@@ -339,4 +339,12 @@ inline Wind next_wind(Wind 风) {
 }
 
 
+inline std::string vec2str(std::vector<int> vec)
+{
+	std::string str = "{";
+	for (auto t : vec) { str += std::to_string(t); str += ","; }
+	str += "}";
+	return str;
+};
+
 #endif

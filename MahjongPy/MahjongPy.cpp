@@ -181,6 +181,7 @@ PYBIND11_MODULE(MahjongPy, m)
 		.def_readonly("honba", &Table::n本场)
 		.def_readonly("riichibo", &Table::n立直棒)
 		.def_readwrite("seed", &Table::seed)
+		.def_readwrite("write_log", &Table::write_log)
 		
 		// 辅助函数们
 		.def("get_dora", &Table::get_dora)

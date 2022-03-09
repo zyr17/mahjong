@@ -9,14 +9,6 @@ void PaipuReplayer::init(vector<int> yama, vector<int> init_scores, int 立直�
 	table.game_init_for_replay(yama, init_scores, 立直棒, 本场, 场风, 亲家);
 
 	if (write_log) {
-		auto vec2str = [](vector<int> vec)
-		{
-			string str = "{";
-			for (auto t : vec) { str += to_string(t); str += ","; }
-			str += "}";
-			return str;
-		};
-
 		FILE* fp = fopen("replay.log", "w+");
 		fprintf(fp, "Table table;\ntable.game_init_for_replay(%s, %s, %d, %d, %d, %d);\n",
 			vec2str(yama).c_str(),
