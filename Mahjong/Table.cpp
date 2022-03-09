@@ -1119,10 +1119,12 @@ void Table::发牌(int i_player)
 }
 
 void Table::发岭上牌(int i_player)
-{
-	_deal(i_player);
-	//openGameLog.log摸牌(i_player, nullptr);
-	//fullGameLog.log摸牌(i_player, player[i_player].hand.back());
+{	
+	int n_kan = get_remain_kan_tile();
+	auto iter = 牌山.begin();
+	if (n_kan % 2 == 0) ++iter;
+	players[i_player].hand.push_back(*iter);
+	牌山.erase(iter);
 }
 
 std::string Table::to_string(int option) const
