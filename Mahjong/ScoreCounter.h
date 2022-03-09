@@ -2,9 +2,9 @@
 #define SCORE_COUNTER_H
 
 #include <tuple>
-#include "mahjong/Yaku.h"
+#include "Yaku.h"
 #include <vector>
-#include "mahjong/Tile.h"
+#include "Tile.h"
 #include <sstream>
 
 struct CounterResult {

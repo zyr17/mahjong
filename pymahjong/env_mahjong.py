@@ -5,6 +5,7 @@ import numpy as np
 from copy import deepcopy
 import gym
 import MahjongPyWrapper as mp
+import MahjongPy as mp_old
 
 from mahjong.shanten import Shanten
 from mahjong.tile import TilesConverter
@@ -287,8 +288,9 @@ class EnvMahjong(gym.Env):
 
     metadata = {'name': 'Mahjong'}
 
-    def __init__(self, printing=True, reward_unit=100, force_win=False, force_riichi=False, append_aval_action_obs=True):
-        self.t = mp.Table()
+    def __init__(self, type = mp.Table, printing=True, reward_unit=100, force_win=False, force_riichi=False, append_aval_action_obs=True):
+        self.type = type
+        self.t = self.type()
         self.Phases = (
             "P1_ACTION", "P2_ACTION", "P3_ACTION", "P4_ACTION", "P1_RESPONSE", "P2_RESPONSE", "P3_RESPONSE",
             "P4_RESPONSE", "P1_ChanKanRESPONSE", "P2_ChanKanRESPONSE", "P3_ChanKanRESPONSE", "P4_ChanKanRESPONSE",
@@ -330,8 +332,9 @@ class EnvMahjong(gym.Env):
 
         self.action_space = Discrete(47)
 
-    def reset(self, oya, game_wind):
-        self.t = mp.Table()
+    def reset(self, oya, game_wind, seed):
+        self.t = self.type()
+        t.seed = seed
 
         # oya = np.random.random_integers(0, 3)
         # winds = ['east', 'south', 'west', 'north']

@@ -3,8 +3,8 @@
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/operators.h"
-#include "mahjong/Table.h"
-#include "mahjong/ScoreCounter.h"
+#include "Mahjong/Table.h"
+#include "Mahjong/ScoreCounter.h"
 
 using namespace std;
 using namespace pybind11::literals;
