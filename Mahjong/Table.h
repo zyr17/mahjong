@@ -158,6 +158,7 @@ private:
 	int river_counter = 0;
 	Tile tiles[N_TILES];
 public:
+	int seed = -1;
 	Agent* agents[4];	
 	int dora_spec; // 翻开了几张宝牌指示牌
 	std::vector<Tile*> 宝牌指示牌;
