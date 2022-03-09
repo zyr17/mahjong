@@ -1,9 +1,9 @@
 #ifndef ENCODINGPY_H
 #define ENCODINGPY_H
 
-#include "Encoding/TrainingDataEncoding.h"
+#include "Mahjong_New/Encoding/TrainingDataEncoding.h"
 #include "pybind11/numpy.h"
-#include "Table.h"
+#include "Mahjong_New/Table.h"
 
 void encode_table(const mahjong::Table& table, int pid, bool use_oracle, pybind11::array_t<mahjong::TrainingDataEncoding::dtype> arr);
 

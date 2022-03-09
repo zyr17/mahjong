@@ -2,12 +2,12 @@
 #include <chrono>
 #include <random>
 #include <iostream>
-#include "Table.h"
-#include "Rule.h"
-#include "macro.h"
-#include "GamePlay.h"
+#include "Mahjong_New/Table.h"
+#include "Mahjong_New/Rule.h"
+#include "Mahjong_New/macro.h"
+#include "Mahjong_New/GamePlay.h"
 #include "tenhou.h"
-#include "Encoding/TrainingDataEncoding.h"
+#include "Mahjong_New/Encoding/TrainingDataEncoding.h"
 
 using namespace std;
 using_mahjong;

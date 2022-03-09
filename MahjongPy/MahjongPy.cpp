@@ -1,27 +1,18 @@
-﻿#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-value"
-#endif
-
-#include "pybind11/pybind11.h"
+﻿#include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
 #include "pybind11/operators.h"
-#include "Mahjong_New/Table.h"
-#include "Mahjong_New/ScoreCounter.h"
-#include "Mahjong_New/GamePlay.h"
-#include "tenhou.h"
-#include "EncodingPy.h"
+#include "mahjong/Table.h"
+#include "mahjong/ScoreCounter.h"
 
-using_mahjong;
 using namespace std;
 using namespace pybind11::literals;
 namespace py = pybind11;
 
-PYBIND11_MODULE(MahjongPyWrapper, m)
+PYBIND11_MODULE(MahjongPy, m)
 {
-	m.doc() = "An essential Japanese riichi mahjong environment.";
+	m.doc() = "";
 	
 	py::enum_<BaseTile>(m, "BaseTile")
 		.value("_1m", BaseTile::_1m)
@@ -54,20 +45,13 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.value("_8p", BaseTile::_8p)
 		.value("_9p", BaseTile::_9p)
 
-		.value("east", BaseTile::_1z)
-		.value("_1z", BaseTile::_1z)
-		.value("south", BaseTile::_2z)
-		.value("_2z", BaseTile::_2z)
-		.value("west", BaseTile::_3z)
-		.value("_3z", BaseTile::_3z)
-		.value("north", BaseTile::_4z)
-		.value("_4z", BaseTile::_4z)
-		.value("haku", BaseTile::_5z)
-		.value("_5z", BaseTile::_5z)
-		.value("hatsu", BaseTile::_6z)
-		.value("_6z", BaseTile::_6z)
-		.value("chu", BaseTile::_7z)
-		.value("_7z", BaseTile::_7z)
+		.value("east", BaseTile::east)
+		.value("south", BaseTile::south)
+		.value("west", BaseTile::west)
+		.value("north", BaseTile::north)
+		.value("haku", BaseTile::白)
+		.value("hatsu", BaseTile::发)
+		.value("chu", BaseTile::中)
 		;
 
 	py::class_<Fulu>(m, "Fulu")
@@ -82,9 +66,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 	py::class_<Tile>(m, "Tile")
 		.def_readonly("tile", &Tile::tile)
 		.def_readonly("red_dora", &Tile::red_dora)
-		.def_readonly("id", &Tile::id)
 		.def("to_string", &Tile::to_string)
-		.def("to_simple_string", &Tile::to_simple_string)
 		;
 
 	m.def("TileToString", [](const Tile *tile) {return py::bytes(tile->to_string()); });
@@ -104,22 +86,22 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.value("North", Wind::North)
 		;
 
-	py::enum_<BaseAction>(m, "BaseAction")
-		.value("Pass", BaseAction::pass)
-		.value("Chi", BaseAction::吃)
-		.value("Pon", BaseAction::碰)
-		.value("Kan", BaseAction::杠)
-		.value("Ron", BaseAction::荣和)
+	py::enum_<Action>(m, "Action")
+		.value("pass", Action::pass)
+		.value("Chi", Action::吃)
+		.value("Pon", Action::碰)
+		.value("Kan", Action::杠)
+		.value("Ron", Action::荣和)
 
-		.value("ChanAnKan", BaseAction::抢暗杠)
-		.value("ChanKan", BaseAction::抢杠)
+		.value("ChanAnKan", Action::抢暗杠)
+		.value("ChanKan", Action::抢杠)
 
-		.value("AnKan", BaseAction::暗杠)
-		.value("KaKan", BaseAction::加杠)
-		.value("Play", BaseAction::出牌)
-		.value("Riichi", BaseAction::立直)
-		.value("Tsumo", BaseAction::自摸)
-		.value("KyuShuKyuHai", BaseAction::九种九牌)
+		.value("Ankan", Action::暗杠)
+		.value("Kakan", Action::加杠)
+		.value("Play", Action::出牌)
+		.value("Riichi", Action::立直)
+		.value("Tsumo", Action::自摸)
+		.value("KyuShuKyuHai", Action::九种九牌)
 		;
 
 	py::class_<SelfAction>(m, "SelfAction")
@@ -145,8 +127,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("menchin", &Player::门清)
 		.def_readonly("wind", &Player::wind)
 		.def_readonly("oya", &Player::亲家)
-		.def_readonly("toujun_furiten", &Player::同巡振听)
-		.def_readonly("sutehai_furiten", &Player::舍牌振听)
+		.def_readonly("furiten", &Player::振听)
 		.def_readonly("riichi_furiten", &Player::立直振听)
 		.def_readonly("score", &Player::score)
 		.def_readonly("hand", &Player::hand)
@@ -158,8 +139,6 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		// 函数们
 		.def("is_furiten", &Player::is振听)
 		.def("to_string", &Player::to_string)
-		.def("hand_to_string", &Player::to_string)
-		.def("tenpai_to_string", &Player::tenpai_to_string)
 		;
 
 	m.def("PlayerToString", [](const Player& player) {return py::bytes(player.to_string()); });
@@ -172,16 +151,21 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def("game_init_with_metadata", &Table::game_init_with_metadata)
 		.def("get_phase", &Table::get_phase)
 		.def("make_selection", &Table::make_selection)
-		.def("make_selection_from_action_tile", &Table::make_selection_from_action_tile)
-		.def("make_selection_from_action_basetile", &Table::make_selection_from_action_basetile_int)
 		.def("get_info", &Table::get_info, py::return_value_policy::reference)
-		.def("get_selected_base_action", &Table::get_selected_base_action)
+		.def("get_selected_action", &Table::get_selected_action)
 		.def("who_make_selection", &Table::who_make_selection)
 		.def("get_selected_action_tile", &Table::get_selected_action_tile, py::return_value_policy::reference)
-		.def("get_selected_action", &Table::get_selected_action)
+		.def("get_full_selected_action", &Table::get_full_selected_action)
 		.def("get_result", &Table::get_result)
 		.def("get_self_actions", &Table::get_self_actions)
 		.def("get_response_actions", &Table::get_response_actions)
+
+		// MT
+		.def("get_phase_mt", &Table::get_phase_mt)
+		.def("make_selection_mt", &Table::make_selection_mt)
+		.def("get_self_actions_mt", &Table::get_self_actions_mt)
+		.def("get_response_actions_mt", &Table::get_response_actions_mt)
+		.def("should_i_make_selection_mt", &Table::should_i_make_selection_mt)
 
 		// 成员变量们
 		.def_readonly("dora_spec", &Table::dora_spec)
@@ -212,15 +196,13 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.value("TsumoAgari", ResultType::自摸终局)
 		.value("IntervalRyuuKyoku", ResultType::中途流局)
 		.value("NoTileRyuuKyoku", ResultType::荒牌流局)
-		.value("NagashiMangan", ResultType::流局满贯)
+		.value("RyuuKyokuMangan", ResultType::流局满贯)
 		;
 
 	py::class_<Result>(m, "Result")
 		.def_readonly("result_type", &Result::result_type)
 		.def_readonly("results", &Result::results)
 		.def_readonly("score", &Result::score)
-		.def_readonly("winner", &Result::winner)
-		.def_readonly("loser", &Result::loser)
 		.def("to_string", &Result::to_string)
 		;	
 
@@ -307,69 +289,28 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("score2", &CounterResult::score2)
 		;
 
-	py::enum_<Table::PhaseEnum>(m, "PhaseEnum")
-		.value("GAME_OVER", Table::PhaseEnum::GAME_OVER)
-		.value("P1_ACTION", Table::PhaseEnum::P1_ACTION)
-		.value("P2_ACTION", Table::PhaseEnum::P2_ACTION)
-		.value("P3_ACTION", Table::PhaseEnum::P3_ACTION)
-		.value("P4_ACTION", Table::PhaseEnum::P4_ACTION)
+	py::enum_<Table::_Phase_>(m, "_Phase_")
+		.value("GAME_OVER", Table::_Phase_::GAME_OVER)
+		.value("P1_ACTION", Table::_Phase_::P1_ACTION)
+		.value("P2_ACTION", Table::_Phase_::P2_ACTION)
+		.value("P3_ACTION", Table::_Phase_::P3_ACTION)
+		.value("P4_ACTION", Table::_Phase_::P4_ACTION)
 
-		.value("P1_RESPONSE", Table::PhaseEnum::P1_RESPONSE)
-		.value("P2_RESPONSE", Table::PhaseEnum::P2_RESPONSE)
-		.value("P3_RESPONSE", Table::PhaseEnum::P3_RESPONSE)
-		.value("P4_RESPONSE", Table::PhaseEnum::P4_RESPONSE)
+		.value("P1_RESPONSE", Table::_Phase_::P1_RESPONSE)
+		.value("P2_RESPONSE", Table::_Phase_::P2_RESPONSE)
+		.value("P3_RESPONSE", Table::_Phase_::P3_RESPONSE)
+		.value("P4_RESPONSE", Table::_Phase_::P4_RESPONSE)
 		
-		.value("P1_chankan", Table::PhaseEnum::P1_抢杠RESPONSE)
-		.value("P2_chankan", Table::PhaseEnum::P2_抢杠RESPONSE)
-		.value("P3_chankan", Table::PhaseEnum::P3_抢杠RESPONSE)
-		.value("P4_chankan", Table::PhaseEnum::P4_抢杠RESPONSE)
+		.value("P1_chankan", Table::_Phase_::P1_抢杠RESPONSE)
+		.value("P2_chankan", Table::_Phase_::P2_抢杠RESPONSE)
+		.value("P3_chankan", Table::_Phase_::P3_抢杠RESPONSE)
+		.value("P4_chankan", Table::_Phase_::P4_抢杠RESPONSE)
 		
-		.value("P1_chanankan", Table::PhaseEnum::P1_抢暗杠RESPONSE)
-		.value("P2_chanankan", Table::PhaseEnum::P2_抢暗杠RESPONSE)
-		.value("P3_chanankan", Table::PhaseEnum::P3_抢暗杠RESPONSE)
-		.value("P4_chanankan", Table::PhaseEnum::P4_抢暗杠RESPONSE)
+		.value("P1_chanankan", Table::_Phase_::P1_抢暗杠RESPONSE)
+		.value("P2_chanankan", Table::_Phase_::P2_抢暗杠RESPONSE)
+		.value("P3_chanankan", Table::_Phase_::P3_抢暗杠RESPONSE)
+		.value("P4_chanankan", Table::_Phase_::P4_抢暗杠RESPONSE)
 		;
 
 	m.def("yakus_to_string", [](std::vector<Yaku> yakus) {return py::bytes(yakus_to_string(yakus)); });
-
-	py::class_<PaipuReplayer>(m, "PaipuReplayer")
-		.def(py::init<>())
-		.def_readwrite("table", &PaipuReplayer::table)
-		.def("init", &PaipuReplayer::init)
-		.def("get_self_actions", &PaipuReplayer::get_self_actions)
-		.def("get_response_actions", &PaipuReplayer::get_response_actions)
-		.def("make_selection", &PaipuReplayer::make_selection)
-		.def("make_selection_from_action", &PaipuReplayer::make_selection_from_action)
-		.def("get_selection_from_action", &PaipuReplayer::get_selection_from_action)
-		.def("get_phase", &PaipuReplayer::get_phase)
-		.def("get_result", &PaipuReplayer::get_result)
-		.def("set_log", &PaipuReplayer::set_log)
-		;
-
-	py::class_<TenhouShuffle>(m, "TenhouShuffle")
-		.def_static("instance", &TenhouShuffle::instance)
-		.def("init", &TenhouShuffle::init)
-		.def("generate_yama", &TenhouShuffle::generate_yama)
-		;
-
-	m.def("encode_table", &encode_table);
-	m.def("encode_table_riichi_step2", &encode_table_riichi_step2);
-	m.def("encode_action", &encode_action);
-	m.def("encode_action_riichi_step2", &encode_action_riichi_step2);
-	m.def("get_riichi_tiles", &TrainingDataEncoding::get_riichi_tiles);
-
-	auto get_self_action_index = 
-	[](const std::vector<SelfAction> &actions, BaseAction action_type, std::vector<BaseTile> correspond_tiles, bool use_red_dora)
-		{ return get_action_index(actions, action_type, correspond_tiles, use_red_dora); };
-		
-	auto get_response_action_index = 
-	[](const std::vector<ResponseAction> &actions, BaseAction action_type, std::vector<BaseTile> correspond_tiles, bool use_red_dora)
-		{ return get_action_index(actions, action_type, correspond_tiles, use_red_dora); };
-
-	m.def("get_self_action_index", get_self_action_index);
-	m.def("get_response_action_index", get_response_action_index);
 }
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
