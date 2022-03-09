@@ -569,9 +569,14 @@ void Table::init_red_dora_3()
 
 void Table::shuffle_tiles()
 {
-	std::random_device rd;
-	std::mt19937 g(rd());
-	std::shuffle(tiles, tiles + N_TILES, g);
+	std::default_random_engine rng(time(nullptr));
+	if (seed < 0) {
+		std::shuffle(tiles, tiles + N_TILES, rng);
+	}
+	else {
+		rng.seed(seed);
+		std::shuffle(tiles, tiles + N_TILES, rng);
+	}
 }
 
 void Table::init_yama()

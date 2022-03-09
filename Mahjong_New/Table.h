@@ -21,6 +21,7 @@ public:
 	int dora_spec = 1; // 翻开了几张宝牌指示牌
 	std::vector<Tile*> 宝牌指示牌;
 	std::vector<Tile*> 里宝牌指示牌;
+	int seed = -1;
 	
 	// 牌山的起始是岭上牌(0,1,2,3)
 	// 然后标记宝牌和ura的位置(5,7,9,11,13)、(4,6,8,10,12)

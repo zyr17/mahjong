@@ -46,7 +46,13 @@ void Table::init_red_dora_3()
 void Table::shuffle_tiles()
 {
 	static std::default_random_engine rd(time(nullptr));
-	std::shuffle(牌山.begin(), 牌山.end(), rd);
+	if (seed < 0) {
+		std::shuffle(牌山.begin(), 牌山.end(), rd);
+	}
+	else {
+		rd.seed(seed);
+		std::shuffle(牌山.begin(), 牌山.end(), rd);		
+	}
 }
 
 void Table::init_yama()

@@ -154,6 +154,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("river", &Player::river)
 		.def_readonly("ippatsu", &Player::一发)
 		.def_readonly("first_round", &Player::first_round)
+		.def_readwrite("seed", &Table::seed)
 		
 		// 函数们
 		.def("is_furiten", &Player::is振听)
