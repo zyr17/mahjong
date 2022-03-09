@@ -154,7 +154,6 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("river", &Player::river)
 		.def_readonly("ippatsu", &Player::一发)
 		.def_readonly("first_round", &Player::first_round)
-		.def_readwrite("seed", &Table::seed)
 		
 		// 函数们
 		.def("is_furiten", &Player::is振听)
@@ -197,6 +196,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("oya", &Table::庄家)
 		.def_readonly("honba", &Table::n本场)
 		.def_readonly("riichibo", &Table::n立直棒)
+		.def_readwrite("seed", &Table::seed)
 		
 		// 辅助函数们
 		.def("get_dora", &Table::get_dora)
