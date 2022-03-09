@@ -28,8 +28,8 @@ enum class Belong : unsigned char {
 
 enum BaseTile : unsigned char {
 	_1m, _2m, _3m, _4m, _5m, _6m, _7m, _8m, _9m,
-	_1s, _2s, _3s, _4s, _5s, _6s, _7s, _8s, _9s,
 	_1p, _2p, _3p, _4p, _5p, _6p, _7p, _8p, _9p,
+	_1s, _2s, _3s, _4s, _5s, _6s, _7s, _8s, _9s,
 	east, south, west, north,
 	白, 发, 中
 };
@@ -37,9 +37,9 @@ enum BaseTile : unsigned char {
 inline std::string basetile_to_string_simple(BaseTile bt) {
 	using namespace std;
 	static vector<string> names{
-		"1m","2m","3m","4m","5m","6m","7m","8m","9m",	
-		"1s","2s","3s","4s","5s","6s","7s","8s","9s",	
+		"1m","2m","3m","4m","5m","6m","7m","8m","9m",
 		"1p","2p","3p","4p","5p","6p","7p","8p","9p",
+		"1s","2s","3s","4s","5s","6s","7s","8s","9s",
 		"1z","2z","3z","4z","5z","6z","7z" 
 	};
 	return names[int(bt)];
@@ -54,12 +54,12 @@ inline BaseTile char2_to_basetile(char number, char color, bool& red_dora) {
 	}
 	if (color == 'm') {
 		return BaseTile(_1m + num - 1);
-	}	
-	if (color == 's') {
-		return BaseTile(_1s + num - 1);
-	}	
+	}
 	if (color == 'p') {
 		return BaseTile(_1p + num - 1);
+	}
+	if (color == 's') {
+		return BaseTile(_1s + num - 1);
 	}	
 	if (color == 'z') {
 		return BaseTile(east + num - 1);
@@ -69,8 +69,8 @@ inline BaseTile char2_to_basetile(char number, char color, bool& red_dora) {
 
 inline BaseTile get_dora_next(BaseTile tile) {
 	if (tile == _9m) return _1m;
-	else if (tile == _9s) return _1s;
 	else if (tile == _9p) return _1p;
+	else if (tile == _9s) return _1s;
 	else if (tile == north) return east;
 	else if (tile == 中) return 白;
 	else return static_cast<BaseTile>((int)tile + 1);
@@ -119,10 +119,10 @@ inline bool is_顺子(std::vector<BaseTile> tiles) {
 	if (tiles[2] - tiles[1] != 1) return false;
 	// 必须成顺子
 
-	if (tiles[2] == _1s) return false;
-	if (tiles[2] == _2s) return false;
 	if (tiles[2] == _1p) return false;
 	if (tiles[2] == _2p) return false;
+	if (tiles[2] == _1s) return false;
+	if (tiles[2] == _2s) return false;
 	if (tiles[2] >= east) return false;
 
 	return true;
@@ -202,10 +202,10 @@ inline std::string basetile_to_string(BaseTile tile) {
 		ret = "[" + std::to_string(static_cast<int>(tile) + 1) + "m";
 	}
 	else if (9 <= tile && tile <= 17) {
-		ret = "[" + std::to_string(static_cast<int>(tile) - 8) + "s";
+		ret = "[" + std::to_string(static_cast<int>(tile) - 8) + "p";
 	}
 	else if (18 <= tile && tile <= 26) {
-		ret = "[" + std::to_string(static_cast<int>(tile) - 17) + "p";
+		ret = "[" + std::to_string(static_cast<int>(tile) - 17) + "s";
 	}
 	else if (tile == east) {
 		ret = "[东";
@@ -247,10 +247,10 @@ public:
 			ss << number << "m";
 			return ss.str();
 		case 1:
-			ss << number << "s";
+			ss << number << "p";
 			return ss.str();
 		case 2:
-			ss << number << "p";
+			ss << number << "s";
 			return ss.str();
 		case 3:
 			ss << number << "z";

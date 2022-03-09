@@ -554,17 +554,17 @@ void Player::test_show_hand()
 void Table::init_tiles()
 {
 	for (int i = 0; i < N_TILES; ++i) {
-		tiles[i].tile = static_cast<BaseTile>(i % 34);
-		//tiles[i].belongs = Belong::yama;
+		tiles[i].tile = static_cast<BaseTile>(i / 4);
 		tiles[i].red_dora = false;
+		// tiles[i].id = i;
 	}
 }
 
 void Table::init_red_dora_3()
 {
-	tiles[4].red_dora = true;
-	tiles[13].red_dora = true;
-	tiles[22].red_dora = true;
+	tiles[4 * 4].red_dora = true; // 0m 5m 5m 5m
+	tiles[4 * 4 + 9 * 4].red_dora = true; // 0p 5p 5p 5p
+	tiles[4 * 4 + 9 * 4 + 9 * 4].red_dora = true; // 0s 5s 5s 5s
 }
 
 void Table::shuffle_tiles()
