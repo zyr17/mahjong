@@ -89,7 +89,7 @@ class CMakeBuild(build_ext):
                     pass
 
             cmake_args += [
-                '-DCMAKE_CXX_COMPILER=clang++' 
+                '-DCMAKE_CXX_COMPILER=g++-10' 
             ]
 
         else:

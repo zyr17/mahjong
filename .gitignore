@@ -21,9 +21,12 @@ MahjongRelease/
 dist/
 pymahjong.egg-info/
 *.html
-pymahjong/paipuxmls/
+pymahjong/paipuxmls
+pymahjong/alls
+pymahjong/error_logs
 paipu/
 *.log
 *.xml
 *.pkl
 *.model
+bin/
