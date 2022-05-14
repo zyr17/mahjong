@@ -28,8 +28,8 @@ class CMakeBuild(build_ext):
         install_prefix = os.path.abspath(os.path.dirname(extdir))
         print(install_prefix)
         cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}'.format(install_prefix),
-                      '-DCMAKE_C_COMPILER=clang',
-                      '-DCMAKE_CXX_COMPILER=clang++',
+                      '-DCMAKE_C_COMPILER=gcc-10',
+                      '-DCMAKE_CXX_COMPILER=g++-10',
                       '-DCMAKE_BUILD_TYPE=Release']
         if sys.platform == 'win32':
             cmake_args += ['-G MinGW Makefiles']
