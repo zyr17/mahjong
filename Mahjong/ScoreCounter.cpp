@@ -158,7 +158,7 @@ void CounterResult::calculate_score(bool 亲, bool 自摸)
 	throw runtime_error(fmt::format("Error fan & fu cases. {} fan {} fu.", fan, fu));
 }
 
-int calculate_fan(const vector<Yaku> &yakus)
+int calculate_fan(const vector<Yaku> &yakus, const TableRule &rule)
 {
 	bool 役满 = false;
 	for (auto yaku : yakus) {
@@ -172,7 +172,8 @@ int calculate_fan(const vector<Yaku> &yakus)
 		for (auto yaku : yakus) {
 			if (yaku < Yaku::满贯) continue; // 跳过所有不是役满的
 			if (yaku > Yaku::满贯 && yaku < Yaku::役满) fan += 13;
-			if (yaku > Yaku::役满 && yaku < Yaku::双倍役满) fan += 26;
+			if (yaku > Yaku::役满 && yaku < Yaku::双倍役满)
+				fan += rule.YAKUMAN_2 ? 26 : 13;
 		}
 		return fan;
 	}
@@ -373,15 +374,15 @@ bool 带幺九(const string &s) {
 
 /* 牌型对/刻/杠，全幺九，不包括字牌，例如999p 1111m */
 bool 纯老头(const string &s) {
-	if (s[2] == 'K' || s[2] == ':' || s[2] == '|') return s[0] == '1' || s[0] == '9';
+	if (s[2] == 'K' || s[2] == ':' || s[2] == '|') return (s[0] == '1' || s[0] == '9') && s[1] != 'z';
 	return false;
 }
 
 bool 纯绿牌(const string &s) {
 	const char* green_types[] = {"2sK", "3sK", "4sK", "2sS", "6sK", "8sK", "6zK",
-		"2s:", "3s:", "4s:", "6s:", "8s:", "6z:" };
+		"2s:", "3s:", "4s:", "6s:", "8s:", "6z:", "2s|", "3s|", "4s|", "6s|", "8s|", "6z|", };
 
-	return all_of(begin(green_types), end(green_types), 
+	return any_of(begin(green_types), end(green_types), 
 		[&s](const char* green) {return tile_group_match(s, green); });
 }
 
@@ -977,6 +978,8 @@ CounterResult yaku_counter(const Table *table, const Player &player, Tile *corre
 
 	// 从最简单的场役开始计算
 
+	const auto &rule = table->rule;
+
 	bool tsumo = (correspond_tile == nullptr);
 	bool 门清 = player.门清;
 
@@ -1224,9 +1227,9 @@ CounterResult yaku_counter(const Table *table, const Player &player, Tile *corre
 
 	//对于AllYakusAndFu，判定番最高的，番相同的，判定符最高的	
 	auto iter = max_element(all_yaku_fu_cases.begin(), all_yaku_fu_cases.end(), 
-		[](const pair<vector<Yaku>, int> &yaku_fu1, const pair<vector<Yaku>, int> &yaku_fu2) {
-		auto fan1 = calculate_fan(yaku_fu1.first);
-		auto fan2 = calculate_fan(yaku_fu2.first);
+		[&rule](const pair<vector<Yaku>, int> &yaku_fu1, const pair<vector<Yaku>, int> &yaku_fu2) {
+		auto fan1 = calculate_fan(yaku_fu1.first, rule);
+		auto fan2 = calculate_fan(yaku_fu2.first, rule);
 		if (fan1 < fan2) return true;
 		if (fan1 > fan2) return false;
 		// 如果番数一样则判断符
@@ -1243,7 +1246,7 @@ CounterResult yaku_counter(const Table *table, const Player &player, Tile *corre
 	}
 	else {
 		final_result.yakus.assign(iter->first.begin(), iter->first.end());
-		final_result.fan = calculate_fan(final_result.yakus);
+		final_result.fan = calculate_fan(final_result.yakus, rule);
 		final_result.fu = iter->second;
 		bool 亲家 = false;
 		if (table->庄家 == table->turn) 亲家 = true;

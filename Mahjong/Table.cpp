@@ -9,6 +9,26 @@
 namespace_mahjong
 using namespace std;
 
+TableRule get_predefined_table_rule(PredefinedTableRule rule_name) {
+	TableRule base_rule = TableRule();
+	switch (rule_name) {
+		case PredefinedTableRule::JANTAMA:
+			base_rule.MINKANDORA_SOKUNORI = false;
+			// base_rule.YAKUMAN_PAO = true;
+			base_rule.TENPAI_TEHAI_5MATSU = false;
+			return base_rule;
+		case PredefinedTableRule::TENHOU:
+			base_rule.NAGARE_3AGARI = true;
+			base_rule.MINKANDORA_SOKUNORI = false;
+			// base_rule.YAKUMAN_PAO = true;
+			base_rule.YAKUMAN_2 = false;
+			base_rule.TENPAI_TEHAI_5MATSU = false;
+			return base_rule;
+		default:
+			throw("Unknown rule name");
+	}
+}
+
 static bool check_见逃(const vector<ResponseAction>& responses, int selection)
 {
 	for (int i = 0; i < responses.size();++i) {
@@ -20,6 +40,10 @@ static bool check_见逃(const vector<ResponseAction>& responses, int selection)
 		}
 	}
 	return false;
+}
+
+Table::Table(TableRule input_rule) {
+	rule = input_rule;
 }
 
 vector<BaseTile> Table::get_dora() const
@@ -419,7 +443,8 @@ void Table::deal_tile(int i_player)
 /* 如果还有2/4张岭上牌，则摸倒数第2张（因为最后一张压在下面）*/
 void Table::deal_tile_岭上(int i_player)
 {
-	dora_spec++; // 先翻dora
+	if (rule.MINKANDORA_SOKUNORI || after_ankan())
+		dora_spec++; // 如果是暗杠或者规则为杠立即翻，先翻dora
 	int n_kan = get_remain_kan_tile();
 	auto iter = 牌山.begin();
 	if (n_kan % 2 == 0) ++iter;
@@ -457,7 +482,8 @@ void Table::发牌(int i_player)
 
 void Table::发岭上牌(int i_player)
 {
-	dora_spec++; // 先翻dora
+	throw("add dora not fix");
+	dora_spec++; // 先翻dora  TODO
 	deal_tile(i_player);
 	fullGameLog.log摸牌(i_player, players[i_player].hand.back());
 }
@@ -648,6 +674,10 @@ void Table::make_selection(int selection)
 	// 这个地方控制了游戏流转
 	debug_selection_record(selection);
 	// 分为两种情况，如果是ACTION阶段
+	// 是否需要杠后翻dora。上一个动作是明杠且规则为杠后翻，则在出牌或者继续成功杠的情况下翻dora
+	bool kan_dora = (!rule.MINKANDORA_SOKUNORI && 
+					 (last_action == BaseAction::杠 || 
+					  last_action == BaseAction::加杠));
 	switch (phase) {
 	case GAME_OVER:
 		return;
@@ -675,6 +705,9 @@ void Table::make_selection(int selection)
 		case BaseAction::出牌:
 		case BaseAction::立直:
 		{
+			// 打牌了，如果需要翻dora马上翻
+			if (kan_dora) dora_spec ++ ;
+			
 			// 决定不胡牌，则不具有一发状态
 			players[turn].一发 = false;
 
@@ -711,6 +744,9 @@ void Table::make_selection(int selection)
 		}
 		case BaseAction::暗杠:
 		{
+			// 如果继续杠，需要确认没人枪杠才翻dora，先记在账上
+			if (kan_dora) dora_wait ++ ;
+
 			tile = selected_action.correspond_tiles[0];
 
 			// 第一巡消除
@@ -730,6 +766,9 @@ void Table::make_selection(int selection)
 		}
 		case BaseAction::加杠:
 		{
+			// 如果继续杠，需要确认没人枪杠才翻dora，先记在账上
+			if (kan_dora) dora_wait ++ ;
+
 			tile = selected_action.correspond_tiles[0];
 
 			// 第一巡消除
@@ -880,7 +919,13 @@ void Table::make_selection(int selection)
 			break;
 
 		case BaseAction::荣和:
-			result = 荣和结算(this, selected_action.correspond_tiles[0], response_player);
+			if (response_player.size() == 3 && rule.NAGARE_3AGARI) {
+				// 有三家和了流局并触发
+				result = 三家和了流局结算(this);
+			}
+			else {
+				result = 荣和结算(this, selected_action.correspond_tiles[0], response_player);
+			}
 			phase = GAME_OVER;
 			return;
 		default:
@@ -956,6 +1001,11 @@ void Table::make_selection(int selection)
 		}
 		players[turn].play_加杠(selected_action.correspond_tiles[0]);
 		last_action = BaseAction::加杠;
+		// 如果有等待翻的dora，现在能翻了
+		if (dora_wait) {
+			dora_spec ++ ;
+			dora_wait = 0;
+		}
 
 		// 这是鸣牌，消除所有人第一巡和一发
 		for (int i = 0; i < 4; ++i) {
@@ -1031,8 +1081,11 @@ void Table::make_selection(int selection)
 		}
 		players[turn].play_暗杠(selected_action.correspond_tiles[0]->tile);
 		last_action = BaseAction::暗杠;
-		// 立即翻宝牌指示牌
-		// dora_spec++;
+		// 如果有等待翻的dora，现在能翻了
+		if (dora_wait) {
+			dora_spec ++ ;
+			dora_wait = 0;
+		}
 
 		// 这是暗杠，消除所有人第一巡和一发
 		for (int i = 0; i < 4; ++i) {

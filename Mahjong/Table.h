@@ -14,12 +14,54 @@ namespace_mahjong
 
 constexpr auto N_TILES = (34 * 4);
 
+struct TableRule {
+	bool KUITAN = true;
+	int AKA = 3;
+	bool NAGASHI_MANGAN = true;
+	bool KIRIAGE_MANGAN = false;
+	bool TOBI = true;
+	bool DORA = true;
+	bool URA = true;
+	bool MINKANDORA_SOKUNORI = true;
+	bool KANDORA = true;
+	bool KANURA = true;
+	bool NAGARE_4KAN  = true;
+	bool NAGARE_4FU  = true;
+	bool NAGARE_4REACH  = true;
+	bool NAGARE_99  = true;
+	bool NAGARE_3AGARI  = false;
+	bool ATAMAHANE = false;
+	bool AGARI_RENCHAN = true;
+	bool AGARI_OWARI = true;  // if false, all last oya is first and agari will not end game
+	bool TENPAI_RENCHAN = true;
+	bool TENPAI_OWARI = true;
+	bool TENPAI_TEHAI_5MATSU = true;  // if tenpai target tile all in hand (e.g. 2222s+fuuro*3), whether considered as tenpai
+	bool TENPAI_FUURO_5MATSU = true;  // if tenpai target tile all in hand or fuuro (e.g. 222p2244s+fuuro234s+fuuro234s), whether considered as tenpai, when false, TENPAI_TEHAI_5MATSU shouldn't be true, otherwise will raise error in ryuukyoku.
+	bool YIPATSU = true;
+	bool NANNYUU_SHANYUU = true;
+	bool YAKUMAN_PAO = false;
+	bool YAKUMAN_2 = true;  // if true, daisushi etc are double yakuman (64000) else yakuman (32000)
+	bool YAKUMAN_FUKUGOU = true;  // if true, daisangen + tsuyisou is double yakuman, else yakuman
+	bool YAKUMAN_KAZOE = true;  // if false, normal hand with 13 or more han is sanbaiman (24000)
+	bool FURUYAKU = false;
+	bool FU_RENFU4 = true;
+	bool FU_RINSHAN2 = true;
+};
+
+enum PredefinedTableRule {
+	JANTAMA, TENHOU
+};
+
+TableRule get_predefined_table_rule(PredefinedTableRule rule_name);
+
 class Table
 {
 public:
+	TableRule rule;
 	int river_counter = 0;
 	Tile tiles[N_TILES];
 	int dora_spec = 1; // 翻开了几张宝牌指示牌
+	int dora_wait = 0; // 对于明杠加杠，可能需要等待枪杠结算，先暂存翻dora记录
 	std::vector<Tile*> 宝牌指示牌;
 	std::vector<Tile*> 里宝牌指示牌;
 	
@@ -51,7 +93,7 @@ public:
 	int seed = 0;
 
 public:
-	Table() = default;
+	Table(TableRule rule = TableRule());
 
 	std::vector<BaseTile> get_dora() const;
 	std::vector<BaseTile> get_ura_dora() const;

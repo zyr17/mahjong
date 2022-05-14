@@ -166,8 +166,51 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 
 	m.def("PlayerToString", [](const Player& player) {return py::bytes(player.to_string()); });
 
+	py::class_<TableRule>(m, "TableRule")
+		.def(py::init<>())
+		.def_readonly("kuitan", &TableRule::KUITAN)
+		.def_readonly("aka", &TableRule::AKA)
+		.def_readonly("nagashi_mangan", &TableRule::NAGASHI_MANGAN)
+		.def_readonly("kiriage_mangan", &TableRule::KIRIAGE_MANGAN)
+		.def_readonly("tobi", &TableRule::TOBI)
+		.def_readonly("dora", &TableRule::DORA)
+		.def_readonly("ura", &TableRule::URA)
+		.def_readwrite("minkandora_sokunori", &TableRule::MINKANDORA_SOKUNORI)
+		.def_readonly("kandora", &TableRule::KANDORA)
+		.def_readonly("kanura", &TableRule::KANURA)
+		.def_readonly("nagare_4kan", &TableRule::NAGARE_4KAN)
+		.def_readonly("nagare_4fu", &TableRule::NAGARE_4FU)
+		.def_readonly("nagare_4reach", &TableRule::NAGARE_4REACH)
+		.def_readonly("nagare_99", &TableRule::NAGARE_99)
+		.def_readwrite("nagare_3agari", &TableRule::NAGARE_3AGARI)
+		.def_readonly("atamahane", &TableRule::ATAMAHANE)
+		.def_readonly("agari_renchan", &TableRule::AGARI_RENCHAN)
+		.def_readonly("agari_owari", &TableRule::AGARI_OWARI)
+		.def_readonly("tenpai_renchan", &TableRule::TENPAI_RENCHAN)
+		.def_readonly("tenpai_owari", &TableRule::TENPAI_OWARI)
+		.def_readwrite("tenpai_tehai_5matsu", &TableRule::TENPAI_TEHAI_5MATSU)
+		.def_readwrite("tenpai_fuuro_5matsu", &TableRule::TENPAI_FUURO_5MATSU)
+		.def_readonly("yipatsu", &TableRule::YIPATSU)
+		.def_readonly("nannyuu_shanyuu", &TableRule::NANNYUU_SHANYUU)
+		.def_readonly("yakuman_pao", &TableRule::YAKUMAN_PAO)
+		.def_readwrite("yakuman_2", &TableRule::YAKUMAN_2)
+		.def_readonly("yakuman_fukugou", &TableRule::YAKUMAN_FUKUGOU)
+		.def_readonly("yakuman_kazoe", &TableRule::YAKUMAN_KAZOE)
+		.def_readonly("furuyaku", &TableRule::FURUYAKU)
+		.def_readonly("fu_renfu4", &TableRule::FU_RENFU4)
+		.def_readonly("fu_rinshan2", &TableRule::FU_RINSHAN2)
+		;
+	
+	py::enum_<PredefinedTableRule>(m, "PredefinedTableRule")
+		.value("Jantama", PredefinedTableRule::JANTAMA)
+		.value("Tenhou", PredefinedTableRule::TENHOU)
+		;
+
+	m.def("get_predefined_table_rule", &get_predefined_table_rule);
+
 	py::class_<Table>(m, "Table")
 		.def(py::init<>())
+		.def(py::init<TableRule>())
 
 		// 函数们
 		.def("game_init", &Table::game_init)
@@ -207,6 +250,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def_readonly("oya", &Table::庄家)
 		.def_readonly("honba", &Table::n本场)
 		.def_readonly("riichibo", &Table::n立直棒)
+		.def_readonly("rule", &Table::rule)
 		
 		// 辅助函数们
 		.def("get_dora", &Table::get_dora)
@@ -345,6 +389,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 
 	py::class_<PaipuReplayer>(m, "PaipuReplayer")
 		.def(py::init<>())
+		.def(py::init<TableRule>())
 		.def_readwrite("table", &PaipuReplayer::table)
 		.def("init", &PaipuReplayer::init)
 		.def("get_self_actions", &PaipuReplayer::get_self_actions)

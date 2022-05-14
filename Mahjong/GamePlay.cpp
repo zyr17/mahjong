@@ -4,6 +4,11 @@
 namespace_mahjong
 using namespace std;
 
+PaipuReplayer::PaipuReplayer(TableRule rule)
+{
+	table = Table(rule);
+}
+
 void PaipuReplayer::init(vector<int> yama, vector<int> init_scores, int 立直棒, int 本场, int 场风, int 亲家)
 {	
 	if (write_log)

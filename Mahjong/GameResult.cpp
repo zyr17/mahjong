@@ -7,6 +7,8 @@
 namespace_mahjong
 using namespace std;
 
+bool WARNED_NOT_TESTED_CODE_TENPAI_FUURO_5MATSU = false;
+
 static Result 中途流局结算(Table *table) {
 	Result result;
 	result.result_type = ResultType::中途流局;
@@ -36,6 +38,11 @@ Result 四立直流局结算(Table *table)
 }
 
 Result 四杠流局结算(Table *table)
+{
+	return 中途流局结算(table);
+}
+
+Result 三家和了流局结算(Table *table)
 {
 	return 中途流局结算(table);
 }
@@ -156,7 +163,31 @@ Result 荒牌流局结算(Table * table)
 		bool 听牌[4] = {false, false, false, false};
 
 		for (int i = 0; i < 4; ++i) {
-			if (get听牌(convert_tiles_to_basetiles(table->players[i].hand)).size() > 0) {
+			std::vector<BaseTile> exclude_tiles;
+			auto converted_hand = convert_tiles_to_basetiles(table->players[i].hand);
+			if (!table->rule.TENPAI_TEHAI_5MATSU || !table->rule.TENPAI_FUURO_5MATSU) {
+				if (table->rule.TENPAI_TEHAI_5MATSU && !table->rule.TENPAI_FUURO_5MATSU)
+					throw runtime_error("when TENPAI_FUURO_5MATSU is false, TENPAI_TEHAI_5MATSU cannot be true!");
+				std::map<BaseTile, int> tile_map;
+				for (BaseTile i = BaseTile::_1m; i <= BaseTile::_7z; i = (BaseTile)(i + 1))
+					tile_map[i] = 0;
+				// now TENPAI_TEHAI_5MATSU is always false, check if tehai have 4 tiles
+				for (auto &i : converted_hand) {
+					if ( ++ tile_map[i] == 4)
+						exclude_tiles.push_back(i);
+				}
+				if (!table->rule.TENPAI_FUURO_5MATSU) {
+					if (WARNED_NOT_TESTED_CODE_TENPAI_FUURO_5MATSU) {
+						std::cerr << "not tested code in GameResult::荒牌流局结算, about rule TENPAI_FUURO_5MATSU";
+						WARNED_NOT_TESTED_CODE_TENPAI_FUURO_5MATSU = true;
+					}
+					for (const auto &i : table->players[i].副露s)
+						for (const auto &j : convert_tiles_to_basetiles(i.tiles))
+							if ( ++ tile_map[j] == 4)
+								exclude_tiles.push_back(j);
+				}
+			}
+			if (get听牌(converted_hand, exclude_tiles).size() > 0) {
 				听牌[i] = true;
 				听牌人数++;
 			}

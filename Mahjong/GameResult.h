@@ -73,6 +73,7 @@ Result 九种九牌流局结算(Table* table);
 Result 四风连打流局结算(Table* table);
 Result 四立直流局结算(Table* table);
 Result 四杠流局结算(Table* table);
+Result 三家和了流局结算(Table* table);
 
 Result 荒牌流局结算(Table* table);
 

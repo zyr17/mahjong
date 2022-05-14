@@ -11,7 +11,7 @@ class PaipuReplayer
 public:
 	Table table;
 	bool write_log = false;
-	PaipuReplayer() = default;
+	PaipuReplayer(TableRule rule = TableRule());
 	void init(std::vector<int> yama, std::vector<int> init_scores, int 立直棒, int 本场, int 场风, int 亲家);
 	std::vector<SelfAction> get_self_actions() const;
 	std::vector<ResponseAction> get_response_actions() const;
