@@ -8,6 +8,7 @@
 #include "GamePlay.h"
 #include "tenhou.h"
 #include "Encoding/TrainingDataEncoding.h"
+#include "RoundToWin.h"
 
 using namespace std;
 using_mahjong;
@@ -102,10 +103,38 @@ void test_random_play(int games = 10)
 	fmt::print("{}", profiler::get_all_profiles_v2());
 }
 
+std::vector<Tile> str_to_tiles(std::string s) {
+	std::vector<Tile> res;
+	assert(s.size() % 2 == 0);
+	for (int i = 0; i < s.size(); i += 2) {
+		Tile t;
+		t.tile = char2_to_basetile(s[i], s[i + 1], t.red_dora);
+		res.push_back(t);
+	}
+	return res;
+}
+
 int main() {	
-	test_random_play();
+	// test_random_play();
 	// test_tenhou_yama();
 	// test_tenhou_game();
+	auto st = Syanten::instance();
+	auto tr = TenhouShuffle::instance();
+	while (1) {
+		std::string s;
+		std::cin >> s;
+		tr.init(s.c_str());
+		for (int i = 1; i < 4; i ++ ) {
+			auto res = tr.generate_yama();
+			fmt::print("({}, {}), {}", tr.dice0, tr.dice1, res);
+		}
+		// auto tiles = str_to_tiles(s);
+		// std::vector<Tile*> tilesp;
+		// for (auto &i : tiles)
+		// 	tilesp.push_back(&i);
+		// int res = st.normal_round_to_win(tilesp, 0);
+		// std::cout << s << ' ' << res << std::endl;
+	}
 	getchar();
 	return 0;
 }

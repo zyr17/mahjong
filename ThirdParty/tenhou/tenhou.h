@@ -27,6 +27,7 @@ struct TenhouShuffle {
 private:
     TenhouShuffle() = default;
 public:
+    int dice0, dice1;
     inline static TenhouShuffle& instance()
     {
         static TenhouShuffle tenhou;
