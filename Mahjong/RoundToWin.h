@@ -7,7 +7,7 @@
 namespace_mahjong
 
 class Syanten {
-    const static int TILENUM = 38, INT_MAX = 2147483647;
+    const static int TILENUM = 38, MAXN = 2147483647;
     const static int SYANTENSYS = 4, TILESYS = 3;
     const int TNUM_TO_SNUM[34] = {
         0, 1, 2, 3, 4, 6, 7, 8, 9,

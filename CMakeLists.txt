@@ -22,6 +22,7 @@ if (UNIX)
 endif()
 if (MSVC)
     add_compile_options(/execution-charset:utf-8)
+    add_compile_options(/source-charset:utf-8)
 endif()
 
 find_package(PythonInterp 3 REQUIRED)
