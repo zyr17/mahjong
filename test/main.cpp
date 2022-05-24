@@ -118,7 +118,7 @@ int main() {
 	// test_random_play();
 	// test_tenhou_yama();
 	// test_tenhou_game();
-	auto st = Syanten::instance();
+	auto &st = Syanten::instance();
 	auto tr = TenhouShuffle::instance();
 	while (1) {
 		std::string s;
