@@ -162,7 +162,7 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 		.def("to_string", &Player::to_string)
 		.def("hand_to_string", &Player::to_string)
 		.def("tenpai_to_string", &Player::tenpai_to_string)
-		.def("syanten", &Player::get_normal向胡数)
+		.def("round_to_win", &Player::get_normal向胡数)
 		;
 
 	m.def("PlayerToString", [](const Player& player) {return py::bytes(player.to_string()); });
