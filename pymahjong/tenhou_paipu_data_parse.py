@@ -1,4 +1,8 @@
+#!/usr/bin/env python3
 from enum import Flag
+from tqdm import tqdm
+import multiprocessing
+import multiprocessing.dummy
 import re
 import os
 import time
@@ -15,6 +19,8 @@ import xml.etree.ElementTree as ET
 import MahjongPyWrapper as mp
 
 # eventlet.monkey_patch()
+
+FILTER_FILE = False
 
 def game_round(game_order, honba):
     winds = "东南西北"
@@ -204,6 +210,44 @@ class Logger:
                     self.fp.write(s)
 
 
+def check_one_paipu(args):
+    ins, path, paipu = args
+    # print(path, paipu)
+    if not paipu.endswith('.log') and not paipu.endswith('.xml') and not paipu.endswith('.txt'): 
+        return "skip"
+
+    if '0000' != paipu.split('-')[2]:
+        return "skip"
+    
+    try:
+        ins.log_cache = ""
+        ins._paipu_replay(path, paipu)
+        return "success"
+    except MahjongException as e:  
+        return e
+    except RuntimeError as e:
+        return e
+    
+
+def filter_files(err_folder, files, strict = False):
+    if not FILTER_FILE:
+        return files
+    last_log = open(f'{err_folder}/test_list.log').read().strip().split('\n')
+    last_log = [re.search(r'20..........-....-....-............', x) for x in last_log]
+    def getres(data):
+        if data is None:
+            return 'None'
+        return data.group(0)
+    if strict:
+        for l in last_log:
+            if l is None or not l:
+                raise ValueError(getres(l))
+    last_log = [x for x in last_log if x is not None and x]
+    last_log = set([getres(x) for x in last_log])
+    files = [x for x in files if x in last_log]
+    return files
+
+
 class PaipuReplay:
     def __init__(self):
         self.num_games = 0
@@ -227,13 +271,15 @@ class PaipuReplay:
         print('Games {}/{}/{}'.format(self.success, self.num_games, self.total_games))
 
     def _paipu_replay(self, path, paipu):
-        if not paipu.endswith('txt'): 
-            raise RuntimeError(f"Cannot read paipu {paipu}")
+        # raise RuntimeError(f"Cannot read paipu {paipu}")
         filename = path + '/' + paipu
         # log(filename)
         try:
             tree = ET.parse(filename)
         except Exception as e:
+            if 'duplicate attribute' in str(e) and 2010 >= int(filename.split('/')[-1][:4]):
+                # mjlog earlier than 2010 may contain multiple owari attribute
+                return
             raise RuntimeError(e.__str__(), f"Cannot read paipu {filename}")
         root = tree.getroot()        
         self.log("解析牌谱为ElementTree成功！")
@@ -241,18 +287,28 @@ class PaipuReplay:
         riichi_status = False
         after_kan = False
         for child_no, child in enumerate(root):
+            if child.tag == "AGARI":
+                if child.get("paoWho") is not None:
+                    self.log("有包牌的牌谱，跳过")
+                    return
+        shuffled = False
+        for child_no, child in enumerate(root):
             if child.tag == "SHUFFLE":
                 seed_str = child.get("seed")
                 prefix = 'mt19937ar-sha512-n288-base64,'
                 if not seed_str.startswith(prefix):
-                    self.log('Bad seed string')
-                    continue
+                    self.log('Bad seed string, skip')
+                    return
                 seed = seed_str[len(prefix):]
                 inst = mp.TenhouShuffle.instance()
                 inst.init(seed)
+                shuffled = True
 
             elif child.tag == "GO":  # 牌桌规则和等级等信息.
                 # self.log(child.attrib)
+                if not shuffled:
+                    self.log('not shuffled, skip')
+                    return
                 try:
                     type_num = int(child.get("type"))
                     tmp = str(bin(type_num))
@@ -345,7 +401,7 @@ class PaipuReplay:
                 #self.log("牌山是: ", yama)
 
                 # 利用PaiPuReplayer进行重放
-                replayer = mp.PaipuReplayer()
+                replayer = mp.PaipuReplayer(mp.get_predefined_table_rule(mp.PredefinedTableRule.Tenhou))
                 if self.write_log:
                     replayer.set_write_log(True)
                 #self.log(f'Replayer.init: {yama} {scores} {riichi_sticks} {honba} {game_order // 4} {oya_id}')
@@ -501,10 +557,16 @@ class PaipuReplay:
                 if child.tag == "RYUUKYOKU":
                     if child.get('type') == 'yao9':
                         self.log("九种九牌！")
-                        replayer.make_selection(14)
+                        for num, s in enumerate(replayer.get_self_actions()):
+                            if s.to_string() == '九种九牌':
+                                replayer.make_selection(num)
+                                break
                     elif child.get('type') == 'ron3':
                         self.log('三家和牌！')   
-                        continue                
+                        replayer.make_selection(len(replayer.get_response_actions()) - 1)
+                        replayer.make_selection(len(replayer.get_response_actions()) - 1)
+                        replayer.make_selection(len(replayer.get_response_actions()) - 1)
+                        replayer.make_selection(len(replayer.get_response_actions()) - 1)
                     else:
                         replayer.make_selection(0)
                         replayer.make_selection(0)
@@ -640,7 +702,7 @@ class PaipuReplay:
             else:
                 raise ValueError(child.tag, child.attrib, "Unexpected Element!")
 
-    def paipu_replay(self, path = None, mode = 'debug'):
+    def paipu_replay(self, pool, path = None, mode = 'debug'):
         # -------- 读取2020年所有牌谱的url ---------------
         # 参考 https://m77.hatenablog.com/entry/2017/05/21/214529
 
@@ -651,6 +713,12 @@ class PaipuReplay:
         if not path:
             basepath = os.getcwd()
             path = basepath + "/paipuxmls"
+            # path = basepath + "/error_logs"
+        else:
+            basepath = path
+        
+        if not os.path.exists(os.path.join(basepath, 'error_logs')):
+            os.mkdir(os.path.join(basepath, 'error_logs'))
 
         if mode == 'mark':
             from datetime import datetime 
@@ -659,20 +727,28 @@ class PaipuReplay:
             fp = open(logfilename, 'w+')
             fp.close()
         files = os.listdir(path)  # 得到文件夹下的所有文件名称
+        # files = os.listdir(basepath + '/error_logs')  # 得到文件夹下的所有文件名称
+        files = filter_files(f'{basepath}/paipuxmls/error_logs/', files)
         self.total_games = len(files)
-        for num, paipu in enumerate(files):            
-            if not paipu.endswith('txt'): 
-                continue
+        args = [(self, path, file) for file in files]
+        
+        if pool is None:
+            res = map(check_one_paipu, args)
+            print('pool none')
+        else:
+            res = pool.imap(check_one_paipu, args)
 
-            if '0000' != paipu.split('-')[2]:
-                continue
+        for num, paipu in tqdm(enumerate(res), total = len(args)):
             
-            self.num_games += 1
-            print(f"{num}/{self.num_games}/{self.total_games} {paipu}")
             try:
-                self.log_cache = ""
-                self._paipu_replay(path, paipu)
-                self.success += 1
+                if str(paipu) == "skip":
+                    continue
+                self.num_games += 1
+                # print(f"{num}/{self.num_games}/{self.total_games} {paipu}")
+                if str(paipu) == "success":
+                    self.success += 1
+                else:
+                    raise paipu
             except MahjongException as e:  
                 if mode == 'debug':
                     print(self.log_cache)
@@ -694,7 +770,7 @@ class PaipuReplay:
                     self.errors.append(paipu)          
                 elif mode == 'mark':
                     fp = open(logfilename, 'a+')
-                    print('RuntimeError: ' + str(e) + ' ' + paipu, file = fp)
+                    print('RuntimeError: ' + str(e) + ' ' + args[num][2], file = fp)
                     self.errors.append(paipu)
                     fp.close()
                 else:
@@ -706,15 +782,24 @@ class PaipuReplay:
             path = basepath + "/paipuxmls"
         self._paipu_replay(path, paipu_name)
 
-def paipu_replay(path = None, mode = 'debug'):
+def paipu_replay(path = None, mode = 'debug', threads = 12):
+    assert threads > 0
+    if threads == 1:
+        pool = multiprocessing.dummy.Pool(1)
+        pool = None
+    else:
+        pool = multiprocessing.Pool(threads)
     if mode == 'debug':
         _logger = Logger(fp = 'stdout')
     else:
         _logger = Logger()
     replayer = PaipuReplay()
     replayer.logger = _logger
-    replayer.paipu_replay(path, mode)
+    replayer.paipu_replay(pool, path, mode)
     print(replayer.progress())
+    if pool is not None:
+        pool.close()
+        pool.join()
     return replayer
 
 def paipu_replay_1(filename, path = None):
@@ -730,4 +815,6 @@ def paipu_replay_1(filename, path = None):
     return replayer
 
 if __name__ == "__main__":
-    paipu_replay()
+    # FILTER_FILE = True
+    paipu_replay(mode = 'mark', threads = 12)
+    # paipu_replay(mode = 'debug', threads = 1)
