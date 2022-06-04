@@ -18,10 +18,13 @@ class Syanten {
     std::unordered_map<int, int> syanten_map;
     int Td[5], Ttvec[5];
     std::vector<int> hand_to_tile_vec(const std::vector<Tile*> &hand);
+    std::vector<int> tilestr_to_tile_vec(const std::string &tilestr);
     int chitoi_syanten(const std::vector<int> &bu);
     int kokushi_syanten(const std::vector<int> &bu);
     int calc_mentsu(const std::vector<int> &bu, int mentsu);
+    int calc_syanten(const std::string &tilestr, int fuuro, bool chitoikokushi = true);
     int calc_syanten(const std::vector<Tile*> &hand, int fuuro, bool chitoikokushi = true);
+    int calc_syanten(std::vector<int> &tilevec, int fuuro, bool chitoikokushi = true);
     void load_syanten_map();
     bool is_loaded = false;
     Syanten() = default;
@@ -33,6 +36,7 @@ public:
         return inst;
     }
     int normal_round_to_win(const std::vector<Tile*>& hand, int num_副露);
+    int normal_round_to_win(const std::string& tilestr, int num_副露);
 };
 
 namespace_mahjong_end

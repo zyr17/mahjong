@@ -167,6 +167,11 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 
 	m.def("PlayerToString", [](const Player& player) {return py::bytes(player.to_string()); });
 
+	m.def("round_to_win", [](const std::string& tilestr, int num_fuuro) {
+		auto& inst = Syanten::instance();
+		return inst.normal_round_to_win(tilestr, num_fuuro);
+	});
+
 	py::class_<TableRule>(m, "TableRule")
 		.def(py::init<>())
 		.def_readonly("kuitan", &TableRule::KUITAN)

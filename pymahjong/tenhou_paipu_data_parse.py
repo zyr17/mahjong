@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-from enum import Flag
-from tqdm import tqdm
+import pdb
+import json
+import pickle
 import multiprocessing
 import multiprocessing.dummy
 import re
 import os
 import time
-import numpy as np
-import shutil
 import sys
 import xml.etree.ElementTree as ET
+import numpy as np
+from tqdm import tqdm
 
 # 下面这些包用于下载和解析牌谱
 # import eventlet
@@ -247,6 +248,25 @@ def filter_files(err_folder, files, strict = False):
     files = [x for x in files if x in last_log]
     return files
 
+class PaipuReplayer:
+
+    def __init__(self):
+        self.replayer = None
+        self.action_logs = []
+        self.count = 0
+
+    def init(self, *argv):
+        self.replayer = mp.PaipuReplayer(mp.get_predefined_table_rule(mp.PredefinedTableRule.Tenhou))
+        self.action_logs.append(['init', *json.loads(json.dumps(argv))])
+        return self.replayer.init(*argv)
+
+    def make_selection(self, *argv):
+        self.count += 1
+        self.action_logs.append(['make_selection', *argv])
+        return self.replayer.make_selection(*argv)
+    
+    def __getattr__(self, name):
+        return getattr(self.replayer, name)
 
 class PaipuReplay:
     def __init__(self):
@@ -284,6 +304,7 @@ class PaipuReplay:
         root = tree.getroot()        
         self.log("解析牌谱为ElementTree成功！")
         replayer = None
+        replayer = PaipuReplayer()
         riichi_status = False
         after_kan = False
         for child_no, child in enumerate(root):
@@ -316,30 +337,30 @@ class PaipuReplay:
                     game_info = dict()
                     game_info["is_pvp"] = int(tmp[-1])
                     if not game_info["is_pvp"]:
-                        break
+                        return
 
                     game_info["no_aka"] = int(tmp[-2])
                     if game_info["no_aka"]:
-                        break
+                        return
 
                     game_info["no_kuutan"] = int(tmp[-3])
                     if game_info["no_kuutan"]:
-                        break
+                        return
 
                     game_info["is_hansou"] = int(tmp[-4])
                     # no requirement
 
                     game_info["is_3ma"] = int(tmp[-5])
                     if game_info["is_3ma"]:
-                        break
+                        return
 
                     game_info["is_pro"] = int(tmp[-6])
                     if not game_info["is_pro"]:
-                        break
+                        return
 
                     game_info["is_fast"] = int(tmp[-7])
-                    if game_info["is_fast"]:
-                        break
+                    # if game_info["is_fast"]:
+                    #     return
 
                     game_info["is_joukyu"] = int(tmp[-8])
 
@@ -401,7 +422,6 @@ class PaipuReplay:
                 #self.log("牌山是: ", yama)
 
                 # 利用PaiPuReplayer进行重放
-                replayer = mp.PaipuReplayer(mp.get_predefined_table_rule(mp.PredefinedTableRule.Tenhou))
                 if self.write_log:
                     replayer.set_write_log(True)
                 #self.log(f'Replayer.init: {yama} {scores} {riichi_sticks} {honba} {game_order // 4} {oya_id}')
@@ -578,6 +598,7 @@ class PaipuReplay:
 
                     result = replayer.get_result()
                     result_score = result.score
+                    replayer.action_logs.append(['over', *result_score])
                     target_score = [score_changes[i] + scores[i] for i in range(4)]                    
                     result_score_change = [result_score[i] - scores[i] for i in range(4)]    
                     self.log(score_changes1, score_changes2, scores, result_score)
@@ -657,6 +678,7 @@ class PaipuReplay:
                         raise ActionException('牌局未结束', paipu, game_order, honba)
 
                     result = replayer.get_result()
+                    replayer.action_logs.append(['over', *result.score])
                     result_score = result.score
                     target_score = [score_changes[i] + scores[i] for i in range(4)]                    
                     result_score_change = [result_score[i] - scores[i] for i in range(4)]    
@@ -701,6 +723,7 @@ class PaipuReplay:
                 #         int(owari_scores[4]) * 100, int(owari_scores[6]) * 100)
             else:
                 raise ValueError(child.tag, child.attrib, "Unexpected Element!")
+        return json.loads(json.dumps(replayer.action_logs))
 
     def paipu_replay(self, pool, path = None, mode = 'debug'):
         # -------- 读取2020年所有牌谱的url ---------------
@@ -802,19 +825,194 @@ def paipu_replay(path = None, mode = 'debug', threads = 12):
         pool.join()
     return replayer
 
-def paipu_replay_1(filename, path = None):
+def paipu_check(filter = False, debug = False):
+    global FILTER_FILE
+    FILTER_FILE = filter
+    if debug:
+        paipu_replay(mode = 'debug', threads = 1)
+    else:
+        paipu_replay(mode = 'mark', threads = 12)
+
+def table_parse_catch_func(filename):
     replayer = PaipuReplay()
-    replayer.set_log(True)
-    replayer.logger = Logger(fp = 'stdout')
     try:
-        replayer.paipu_replay_1(path, filename)
-        print(replayer.log_cache)
+        replay_res = replayer._paipu_replay('./', filename)
+        if replay_res is None:
+            replay_res = []
+        return filename, replay_res
+    except:
+        return filename, None
+
+def table_parse_do_replay(logs):
+    try:
+        # if isinstance(logs, bytes):
+        #     logs = pickle.loads(logs)
+        replayer = None
+        for log in logs:
+            key = log[0]
+            if key == 'init':
+                replayer = mp.PaipuReplayer(mp.get_predefined_table_rule(mp.PredefinedTableRule.Tenhou))
+                # replayer = PaipuReplayer()
+                replayer.init(*log[1:])
+            elif key == 'make_selection':
+                assert replayer.make_selection(*log[1:])
+            elif key == 'over':
+                results = replayer.get_result()
+                scores = results.score
+                assert all([x == y for x, y in zip(scores, log[1:])]), (scores, log[1:])
+            else:
+                raise ValueError(f"unknown key {key}")
     except Exception as e:
-        print(replayer.log_cache)
-        print(e)
-    return replayer
+        return e
+
+def one_replay_encode(logs):
+    arr = []
+    for log in logs:
+        key = log[0]
+        if key == 'init':
+            arr.append(0)
+            assert len(log) == 7 and len(log[1]) == 136 and len(log[2]) == 4
+            arr += log[1]
+            arr += [x // 100 for x in log[2]]
+            arr += log[3:]
+        elif key == 'make_selection':
+            arr += [1, log[1]]
+        elif key == 'over':
+            arr.append(2)
+            assert all([x % 100 == 0 for x in log[1:]])
+            arr += [x // 100 for x in log[1:]]
+        else:
+            raise ValueError(f"unknown key {key}")
+    return np.array(arr, dtype='int16')
+
+def one_replay_decode(logs):
+    if isinstance(logs, np.ndarray):
+        logs = logs.tolist()
+    arr = []
+    pos = 0
+    while pos < len(logs):
+        if logs[pos] == 0:
+            pos += 1
+            input = ['init']
+            input.append(logs[pos:pos + 136])
+            pos += 136
+            input.append([x * 100 for x in logs[pos:pos + 4]])
+            pos += 4
+            input += logs[pos:pos + 4]
+            pos += 4
+            arr.append(input)
+        elif logs[pos] == 1:
+            arr.append(['make_selection', logs[pos + 1]])
+            pos += 2
+        elif logs[pos] == 2:
+            arr.append(['over'] + [x * 100 for x in logs[pos + 1:pos + 5]])
+            pos += 5
+        else:
+            raise ValueError
+    return arr
+
+def replay_encode(file):
+    name, logs = pickle.load(open(file, 'rb'))
+    enc_logs = list(map(one_replay_encode, logs))
+    dec_logs = list(map(one_replay_decode, enc_logs))
+    assert json.dumps(logs) == json.dumps(dec_logs), pdb.set_trace()
+    return name, enc_logs
+
+def pkl_replay_encode(src, dst = 'encode', pool = 12):
+    files = os.popen(f"find {src} -maxdepth 1 -name '*.pkl'").read().strip().split('\n')
+    if pool == 1:
+        pool = multiprocessing.dummy.Pool(pool)
+    else:
+        pool = multiprocessing.Pool(pool)
+    imap = pool.imap(replay_encode, files)
+    for file, data in tqdm(zip(files, imap), total = len(files)):
+        dst_file = file.split('/')
+        dst_file = os.path.join(*(dst_file[:-1] + [dst, dst_file[-1]]))
+        pickle.dump(data, open(dst_file, 'wb'))
+    if (pool):
+        pool.close()
+        pool.join()
+
+def tenhou_table_parse(folder = 'alls', threads = 12):
+    all_files = os.popen(f"find {folder} -name '20*.xml'").read().strip().split('\n')
+    all_files = all_files[:]
+    all_files.sort()
+    file_groups = {}
+    for file in all_files:
+        ofile = file
+        file = file.replace('\\', '/').split('/')[-1]
+        date = file[:8]
+        if date not in file_groups:
+            file_groups[date] = []
+        file_groups[date].append(ofile)
+    target_folder = os.path.join(folder, 'processed')
+    if not os.path.exists(target_folder):
+        os.mkdir(target_folder)
+    if threads == 1:
+        pool = multiprocessing.dummy.Pool(1)
+    else:
+        pool = multiprocessing.Pool(threads)
+    for group in file_groups:
+        target_file = f'{target_folder}/{group}.pkl'
+        if os.path.exists(target_file):
+            print(f'{group} have done, skip')
+            continue
+        files = file_groups[group]
+        print(f'process {group}, number: {len(files)}')
+        imap = pool.imap(table_parse_catch_func, files)
+        collected = []
+        keys = []
+        for fn, ret in tqdm(imap, total = len(files)):
+            if ret is not None:
+                if len(ret) == 0:  # not applicable paipus, skip
+                    continue
+                collected.append((ret))
+                keys.append(fn)
+            else:
+                print(fn, 'fail')
+        pickle.dump([keys, collected], open(target_file, 'wb'))
+    if pool is not None:
+        pool.close()
+        pool.join()
+
+def tenhou_table_replay(folder = 'alls/processed', start = None, pool = 12):
+    all_files = os.popen(f"find {folder} -type f -maxdepth 1").read().strip().split('\n')
+    all_files = all_files[:]
+    all_files.sort()
+    if start is None:
+        start = '20000101'
+    if pool == 1:
+        pool = multiprocessing.dummy.Pool(1)
+    else:
+        pool = multiprocessing.Pool(pool)
+    for file in all_files:
+        filename = file.split('/')[-1].split('.')[0]
+        if filename < start:
+            print(f'{filename} small, continue')
+            continue
+        print(file)
+        keys, logs = pickle.load(open(file, 'rb'))
+        imap = pool.imap(table_parse_do_replay, logs)
+        for key, res in tqdm(zip(keys, imap), total = len(keys)):
+            if res is not None:
+                print(key, res)
+                raise(res)
+    if pool is not None:
+        pool.close()
+        pool.join()
 
 if __name__ == "__main__":
-    # FILTER_FILE = True
-    paipu_replay(mode = 'mark', threads = 12)
-    # paipu_replay(mode = 'debug', threads = 1)
+    # assert len(sys.argv) == 2
+    if sys.argv[1] == 'check_all':
+        paipu_check(False, False)
+    elif sys.argv[1] == 'check_debug':
+        paipu_check(True, True)
+    elif sys.argv[1] == 'tenhou_table_parse':
+        tenhou_table_parse(sys.argv[2], 12)
+    elif sys.argv[1] == 'tenhou_table_replay':
+        start = None
+        if len(sys.argv) > 3:
+            start = sys.argv[3]
+        tenhou_table_replay(sys.argv[2], start = start, pool = 12)
+    elif sys.argv[1] == 'pkl_replay_encode':
+        pkl_replay_encode(sys.argv[2], pool = 12)
