@@ -138,6 +138,14 @@ PYBIND11_MODULE(MahjongPyWrapper, m)
 
 	m.def("ResponseActionToString", [](const ResponseAction &ra) {return py::bytes(ra.to_string()); });
 
+	py::class_<RiverTile>(m, "RiverTile")
+		.def_readonly("tile", &RiverTile::tile)
+		.def_readonly("number", &RiverTile::number)
+		.def_readonly("riichi", &RiverTile::riichi)
+		.def_readonly("remain", &RiverTile::remain)
+		.def_readonly("fromhand", &RiverTile::fromhand)
+		;
+
 	py::class_<Player>(m, "Player")
 		// 成员变量们
 		.def_readonly("double_riichi", &Player::double_riichi)
