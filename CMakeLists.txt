@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
+set(CMAKE_C_COMPILER /usr/bin/gcc-10)
+set(CMAKE_CXX_COMPILER /usr/bin/g++-10)
 project(mahjong)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/Mahjong
                     ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty
